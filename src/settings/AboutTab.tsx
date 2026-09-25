@@ -28,7 +28,7 @@ export function AboutTab({
 	handleExportSettings,
 	handleImportSettings
 }: AboutTabProps) {
-	const displayVersion = "dev-build_1.0.0-Montana";
+	const displayVersion = "Release_1.0.1-Montana";
 
 	const getUpdateLabel = () => {
 		switch (updateStatus) {
