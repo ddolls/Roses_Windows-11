@@ -10,7 +10,7 @@
 <br/>
 
 <!-- HERO SHOWCASE — full-width cinematic shot or video -->
-<img width="1920" height="1080" alt="Roses Hero" src="https://github.com/user-attachments/assets/22041f25-a69e-457d-80d9-7dfbfbed2d29" />
+<img width="1920" height="1080" alt="Roses Hero" src="public/hero.png" />
 
 </div>
 
