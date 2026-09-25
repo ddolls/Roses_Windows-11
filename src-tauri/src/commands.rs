@@ -1990,7 +1990,7 @@ pub fn set_splash_fullscreen(app: AppHandle, fullscreen: bool) {
             }
             let _ = win.show();
         } else {
-            let _ = win.hide();
+            let _ = win.set_ignore_cursor_events(true);
             crate::services::sync_overlays(&app);
         }
     }

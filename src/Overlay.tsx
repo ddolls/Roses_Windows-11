@@ -232,7 +232,6 @@ function OverlayApp() {
 		parseFloat(localStorage.getItem("bloom-scale") || "1.0")
 	);
 	const timeoutRef = useRef<any>(null);
-	const hideWindowTimeoutRef = useRef<any>(null);
 	const splashActiveRef = useRef(false);
 
 	const resetHideTimeout = useCallback(() => {
@@ -407,39 +406,13 @@ function OverlayApp() {
 	}, [brightnessOverlayEnabled, mode]);
 
 	// ── Window Visibility Management ──
+	// Keep the transparent overlay window shown so that activating HUDs (brightness/volume)
+	// does not trigger a white flash or swapchain recreation in WebView2/DWM.
+	// Click passthrough is dynamically handled in Rust via set_ignore_cursor_events.
 	useEffect(() => {
-		const syncWindow = async () => {
-			try {
-				const appWindow = getCurrentWebviewWindow();
-				if (hideWindowTimeoutRef.current) {
-					clearTimeout(hideWindowTimeoutRef.current);
-					hideWindowTimeoutRef.current = null;
-				}
-
-				if (mode === "idle") {
-					// Wait for exit animation to finish before hiding
-					hideWindowTimeoutRef.current = setTimeout(async () => {
-						await appWindow.hide();
-					}, 400);
-				} else {
-					// Position the window first, then show
-					await invoke("sync_overlay_position");
-					await appWindow.show();
-				}
-			} catch (e) {
-				console.error("Window management error:", e);
-			}
-		};
-
-		// Don't manage window visibility during splash — Rust handles it
-		if (mode !== "splash" && !splashActiveRef.current) {
-			syncWindow();
-		}
-
-		return () => {
-			if (hideWindowTimeoutRef.current) clearTimeout(hideWindowTimeoutRef.current);
-		};
-	}, [mode]);
+		const appWindow = getCurrentWebviewWindow();
+		appWindow.show().catch(() => {});
+	}, []);
 
 	// ── Volume Controls ──
 	const lastVolumeCall = useRef(0);

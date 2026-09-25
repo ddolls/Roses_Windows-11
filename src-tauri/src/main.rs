@@ -284,12 +284,11 @@ fn main() {
             let _ = window.show();
             let _ = dock_win.show();
 
-            // Initialize the overlay window — on Windows, set_position doesn't
-            // take effect on a window that has never been shown. Show it once
-            // to register it with the compositor, then hide immediately.
+            // Initialize the overlay window — keep it transparent and click-through.
+            // Keeping it persistently shown avoids WebView2 compositor white flashes on edge hover.
             if let Some(ov_win) = app.get_webview_window("overlay") {
+                let _ = ov_win.set_ignore_cursor_events(true);
                 let _ = ov_win.show();
-                let _ = ov_win.hide();
                 let overlay_handle = app.handle().clone();
                 ov_win.on_window_event(move |e| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = e {
