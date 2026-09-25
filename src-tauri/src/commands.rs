@@ -757,23 +757,43 @@ pub async fn get_active_windows() -> Vec<AppInfo> {
 
 #[tauri::command]
 pub async fn focus_window(hwnd: isize) {
+    if hwnd <= 0 {
+        return;
+    }
     tauri::async_runtime::spawn_blocking(move || unsafe {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-            SetForegroundWindow, ShowWindow, SW_MINIMIZE, SW_RESTORE, SW_SHOW,
+            GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
+            PostMessageW, SetForegroundWindow, ShowWindowAsync, SC_MINIMIZE, SC_RESTORE,
+            SW_RESTORE, SW_SHOW, WM_SYSCOMMAND,
         };
         let hwnd = HWND(hwnd as *mut _);
+        if !IsWindow(Some(hwnd)).as_bool() {
+            return;
+        }
+
         let my_pid = std::process::id();
+        let mut target_pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut target_pid));
+        if target_pid == my_pid {
+            return;
+        }
 
         if !IsWindowVisible(hwnd).as_bool() {
-            let _ = ShowWindow(hwnd, SW_SHOW);
-            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = ShowWindowAsync(hwnd, SW_SHOW);
+            let _ = ShowWindowAsync(hwnd, SW_RESTORE);
             let _ = SetForegroundWindow(hwnd);
         } else if IsIconic(hwnd).as_bool() {
-            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = PostMessageW(
+                Some(hwnd),
+                WM_SYSCOMMAND,
+                WPARAM(SC_RESTORE as usize),
+                LPARAM(0),
+            );
+            let _ = ShowWindowAsync(hwnd, SW_RESTORE);
             let _ = SetForegroundWindow(hwnd);
         } else {
-            // Minimize if: window is foreground, OR same process as foreground (not Bloom), OR recently focused
+            // Minimize if: window is foreground, OR same process as foreground (not Bloom/Roses), OR recently focused
             let fg = GetForegroundWindow();
             let mut should_minimize = false;
 
@@ -781,9 +801,7 @@ pub async fn focus_window(hwnd: isize) {
                 should_minimize = true;
             } else if !fg.is_invalid() {
                 let mut fg_pid = 0u32;
-                let mut target_pid = 0u32;
                 GetWindowThreadProcessId(fg, Some(&mut fg_pid));
-                GetWindowThreadProcessId(hwnd, Some(&mut target_pid));
                 if fg_pid == target_pid && fg_pid != 0 && fg_pid != my_pid {
                     should_minimize = true;
                 }
@@ -806,7 +824,15 @@ pub async fn focus_window(hwnd: isize) {
             }
 
             if should_minimize {
-                let _ = ShowWindow(hwnd, SW_MINIMIZE);
+                // Post SC_MINIMIZE so the target process itself handles the minimize animation/state.
+                // This prevents third-party injection hooks (e.g., Windhawk macOS minimize animation)
+                // from crashing inside the Roses process when targeting elevated/foreign apps.
+                let _ = PostMessageW(
+                    Some(hwnd),
+                    WM_SYSCOMMAND,
+                    WPARAM(SC_MINIMIZE as usize),
+                    LPARAM(0),
+                );
             } else {
                 let _ = SetForegroundWindow(hwnd);
             }
@@ -2488,14 +2514,49 @@ pub async fn restart_bloom(handle: AppHandle) {
 
 #[tauri::command]
 pub async fn close_window(hwnd: isize) {
+    if hwnd <= 0 {
+        return;
+    }
     tauri::async_runtime::spawn_blocking(move || unsafe {
-        use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+        use windows::core::BOOL;
+        use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowThreadProcessId, IsWindow, PostMessageW, SC_CLOSE, WM_CLOSE, WM_SYSCOMMAND,
+        };
+
+        #[link(name = "user32")]
+        extern "system" {
+            fn EndTask(hwnd: HWND, fshut: BOOL, fforce: BOOL) -> BOOL;
+        }
+
         let hwnd = HWND(hwnd as *mut _);
+        if !IsWindow(Some(hwnd)).as_bool() {
+            return;
+        }
+
+        // CRITICAL PROTECTION: Never allow closing Roses' own windows!
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == std::process::id() || pid == 0 {
+            return;
+        }
+
+        // 1. Try graceful EndTask (official Windows API used by Explorer taskbar and Task Manager).
+        // This handles elevated processes (like Task Manager) where standard WM_CLOSE is blocked by UIPI.
+        let end_res = EndTask(hwnd, BOOL(0), BOOL(0));
+        if end_res.as_bool() {
+            return;
+        }
+
+        // 2. Try WM_CLOSE via PostMessage
+        let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+
+        // 3. Try SC_CLOSE via WM_SYSCOMMAND
         let _ = PostMessageW(
             Some(hwnd),
-            WM_CLOSE,
-            windows::Win32::Foundation::WPARAM(0),
-            windows::Win32::Foundation::LPARAM(0),
+            WM_SYSCOMMAND,
+            WPARAM(SC_CLOSE as usize),
+            LPARAM(0),
         );
     })
     .await

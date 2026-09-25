@@ -437,6 +437,7 @@ const Dock = memo(function Dock() {
 
 	const handleClosePreview = async (e: React.MouseEvent, hwnd: number) => {
 		e.stopPropagation();
+		if (!hwnd) return;
 		try {
 			await invoke("close_window", { hwnd });
 			setPreviewData((prev) => {
@@ -1342,9 +1343,18 @@ const Dock = memo(function Dock() {
 									<div
 										className="menu-item quit"
 										onClick={async () => {
-											if (contextMenu.app?.hwnd) {
-												await invoke("close_window", { hwnd: contextMenu.app.hwnd });
-												closeMenu();
+											const app = contextMenu.app;
+											closeMenu();
+											if (app) {
+												const hwndsToClose =
+													app.all_hwnds && app.all_hwnds.length > 0
+														? app.all_hwnds.map(([h]) => h)
+														: (app.hwnd ? [app.hwnd] : []);
+												for (const h of hwndsToClose) {
+													if (h) {
+														await invoke("close_window", { hwnd: h }).catch(() => {});
+													}
+												}
 											}
 										}}
 									>
