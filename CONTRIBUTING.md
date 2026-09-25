@@ -1,6 +1,6 @@
-# Contributing to Bloom
+# Contributing to Roses
 
-Thanks for wanting to help. Bloom is a Windows desktop companion built with Tauri — a Rust core and a React/TypeScript UI.
+Thanks for wanting to help. Roses is a Windows desktop companion built with Tauri — a Rust core and a React/TypeScript UI.
 
 ## Before you start
 
@@ -12,23 +12,22 @@ Thanks for wanting to help. Bloom is a Windows desktop companion built with Taur
 Requirements:
 
 - Windows 10 or 11
-- [Bun](https://bun.sh) 1.4+
+- Node.js (or [Bun](https://bun.sh) 1.4+)
 - Rust stable
 - Visual Studio C++ build tools (required by Tauri)
 
 ```bash
-bun install
-bun run tauri dev
+npm install
+npx tauri dev
 ```
 
 Useful commands:
 
 | Command               | What it does                          |
 | --------------------- | ------------------------------------- |
-| `bun run build`       | Typecheck and build the frontend      |
-| `bun run tauri build` | Build the full app                    |
-| `bun run bump <ver>`  | Bump the version in all manifests     |
-| `bun run format`      | Formats the frontend and backend code |
+| `npm run build`       | Typecheck and build the frontend      |
+| `npx tauri build`     | Build the full desktop app & installer|
+| `npm run format`      | Formats the frontend and backend code |
 
 ## Making changes
 
@@ -45,4 +44,4 @@ Useful commands:
 
 ## License
 
-Bloom is licensed under GPL-3.0. By contributing, you agree that your contributions are licensed under the same terms.
+Roses is licensed under GPL-3.0. By contributing, you agree that your contributions are licensed under the same terms.

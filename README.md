@@ -1,23 +1,22 @@
 <div align="center">
 
 <img 
-  src="https://github.com/user-attachments/assets/962887ec-636b-4e0f-90eb-0862c0feefca" 
+  src="public/roses.png" 
   width="72"
 />
 
-# Bloom
+# Roses
 
 <br/>
 
 <!-- HERO SHOWCASE — full-width cinematic shot or video -->
-<!-- ![Hero](your-hero-url) -->
-<img width="1920" height="1080" alt="Bloom Hero" src="https://github.com/user-attachments/assets/22041f25-a69e-457d-80d9-7dfbfbed2d29" />
+<img width="1920" height="1080" alt="Roses Hero" src="https://github.com/user-attachments/assets/22041f25-a69e-457d-80d9-7dfbfbed2d29" />
 
 </div>
 
 ---
 
-Bloom makes your Windows desktop feel alive.
+Roses makes your Windows desktop feel alive.
 
 Every transition is a physics simulation.
 Every element responds to touch.
@@ -31,10 +30,8 @@ This wakes it up.
 ## The Island
 
 <!-- SHOWCASE: GIF or short clip — Island expanding, cycling through modes (3-5s) -->
-<!-- ![Island Demo](your-island-gif-url) -->
-
 <p align="center">
-  <img width="430" height="70" alt="Bloom Island" src="https://github.com/user-attachments/assets/0d723558-9df4-4214-b20e-4a1f97eb1f22" />
+  <img width="430" height="70" alt="Roses Island" src="https://github.com/user-attachments/assets/0d723558-9df4-4214-b20e-4a1f97eb1f22" />
 </p>
 
 A notch at the top of your screen that adapts to what you're doing.
@@ -44,13 +41,7 @@ Watch it transform.
 
 **Music** — album art, track info, playback controls. A visualizer that reacts to five frequency bands with spring physics. It moves when the music plays.
 
-<!-- SHOWCASE: GIF — music mode reacting to a song -->
-<!-- ![Music Visualizer](your-music-gif-url) -->
-
 **Command Center** — WiFi, Bluetooth, Do Not Disturb, volume, brightness. Everything you usually dig through settings for.
-
-<!-- SHOWCASE: GIF — command center toggling controls -->
-<!-- ![Command Center](your-command-center-gif-url) -->
 
 **Status** — Battery, weather. Your desktop, summarized.
 
@@ -65,15 +56,13 @@ It feels mechanical. In a good way.
 ## The Dock
 
 <!-- SHOWCASE: GIF — dock appearing on hover, drag-reorder, window previews -->
-<!-- ![Dock Demo](your-dock-gif-url) -->
-
 <p align="center">
-  <img width="576" height="102" alt="Bloom Dock" src="https://github.com/user-attachments/assets/96229f0e-1246-4baf-b8ad-3e8f77142a12" />
+  <img width="576" height="102" alt="Roses Dock" src="https://github.com/user-attachments/assets/96229f0e-1246-4baf-b8ad-3e8f77142a12" />
 </p>
 
 A taskbar that actually moves.
 
-Bloom replaces your native Windows taskbar.
+Roses replaces your native Windows taskbar.
 It sits at the bottom of your screen, always there when you need it.
 
 Drag to reorder.
@@ -83,15 +72,17 @@ Right-click for context menus.
 It's not an overlay.
 It _is_ your taskbar.
 
-<!-- SHOWCASE: GIF — dock hover previews in action -->
-<!-- ![Window Previews](your-preview-gif-url) -->
+---
+
+## Multi-Monitor & High-Priority Startup
+
+- **Target Display Selector**: Choose which monitor Roses attaches to (Monitor 1, Monitor 2, etc.) in **Settings > General**.
+- **Instant High-Priority Startup**: Run Roses with zero startup delay via Windows Task Scheduler and elevated runlevel so it boots first at logon.
+- **Silent Boot**: Starts seamlessly without annoying pop-ups on logon.
 
 ---
 
 ## Under the Hood
-
-<!-- SHOWCASE: Optional — architecture diagram or visual of the 5-window system -->
-<!-- ![Architecture](your-arch-url) -->
 
 A Rust backend that speaks directly to the Windows shell.
 
@@ -109,14 +100,9 @@ It's fast because it has to be.
 
 ---
 
-<!-- SHOWCASE: Full-width cinematic video or GIF montage -->
-<!-- ![Bloom Montage](your-montage-url) -->
-
----
-
 ## 🛡️ Microsoft Defender
 
-Some users may see a Microsoft Defender warning when installing Bloom.
+Some users may see a Microsoft Defender warning when installing Roses.
 
 The executable was submitted directly to Microsoft for analysis. Microsoft reviewed the file and confirmed that it **does not meet their criteria for malware or potentially unwanted applications**, and **the detection has been removed**.
 
@@ -141,24 +127,25 @@ MpCmdRun.exe -SignatureUpdate
 
 ## Get It Running
 
-**Download** the latest build from [Releases](https://github.com/SehajveerSingh2005/bloom/releases/latest).
+**Download** the latest build from [Releases](https://github.com/ddolls/Roses_Windows-11/releases/latest).
 
 Or build from source:
 
 ```bash
-git clone https://github.com/SehajveerSingh2005/bloom.git
-cd bloom
-bun install
-bun run tauri dev
+git clone https://github.com/ddolls/Roses_Windows-11.git
+cd Roses_Windows-11
+npm install
+npm run build
+npx tauri dev
 ```
 
-You'll need [Rust](https://rustup.rs/) and [Bun](https://bun.sh/). That's it.
+You'll need [Rust](https://rustup.rs/) and [Node.js](https://nodejs.org/) / [Bun](https://bun.sh/). That's it.
 
 ---
 
 ## Contributing
 
-Bloom is open source.
+Roses is open source.
 Found a bug? Open an issue.
 Have an idea? Send a PR.
 Want to just say it's cool? A star goes a long way.
