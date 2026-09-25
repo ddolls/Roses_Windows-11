@@ -1,5 +1,7 @@
+import { useState, useEffect } from "react";
 import { Download, RefreshCw, FileDown, Upload } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { SettingRow } from "./SettingRow";
 
 interface AboutTabProps {
@@ -17,6 +19,7 @@ interface AboutTabProps {
 }
 
 export function AboutTab({
+	appVersion: propVersion,
 	autoUpdate,
 	toggleAutoUpdate,
 	updateStatus,
@@ -28,7 +31,20 @@ export function AboutTab({
 	handleExportSettings,
 	handleImportSettings
 }: AboutTabProps) {
-	const displayVersion = "Release_1.0.3-Montana";
+	const [version, setVersion] = useState(propVersion || "");
+
+	useEffect(() => {
+		if (propVersion) {
+			setVersion(propVersion);
+		} else {
+			getVersion()
+				.then((v) => setVersion(v))
+				.catch(() => setVersion("1.0.5"));
+		}
+	}, [propVersion]);
+
+	const cleanVer = (version || propVersion || "1.0.5").replace(/^v/, "");
+	const displayVersion = `Release_${cleanVer}-Montana`;
 
 	const getUpdateLabel = () => {
 		switch (updateStatus) {
