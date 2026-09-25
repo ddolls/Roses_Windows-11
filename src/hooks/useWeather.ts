@@ -47,8 +47,9 @@ const WMO_CODES: Record<number, string> = {
 	99: "Stormy"
 };
 
-const DELHI_LAT = 28.6139;
-const DELHI_LON = 77.209;
+const UJUNGBERUNG_LAT = -6.9175;
+const UJUNGBERUNG_LON = 107.6961;
+const UJUNGBERUNG_CITY = "Ujungberung, Kota Bandung";
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 interface WeatherState {
@@ -130,7 +131,7 @@ async function resolveLocation(): Promise<ResolvedLocation> {
 		const savedLon = settings["bloom-weather-lon"] || localStorage.getItem("bloom-weather-lon");
 		const savedCity = settings["bloom-weather-city"] || localStorage.getItem("bloom-weather-city");
 
-		if (savedLat && savedLon) {
+		if (savedLat && savedLon && (!savedCity || !savedCity.toLowerCase().includes("delhi"))) {
 			return {
 				lat: parseFloat(savedLat),
 				lon: parseFloat(savedLon),
@@ -169,8 +170,8 @@ async function resolveLocation(): Promise<ResolvedLocation> {
 		// fall through to default
 	}
 
-	// 4. Default to Delhi
-	return { lat: DELHI_LAT, lon: DELHI_LON, city: "Delhi" };
+	// 4. Default to Ujungberung, Kota Bandung
+	return { lat: UJUNGBERUNG_LAT, lon: UJUNGBERUNG_LON, city: UJUNGBERUNG_CITY };
 }
 
 async function persistWeather(temp: number | null, condition: string): Promise<void> {
@@ -197,9 +198,11 @@ export function useWeather(enabled: boolean) {
 		() => localStorage.getItem("bloom-weather-cached-condition") || ""
 	);
 	const [weatherIcon, setWeatherIcon] = useState<ComponentType<LucideProps>>(() => Thermometer);
-	const [cityName, setCityName] = useState<string>(
-		() => localStorage.getItem("bloom-weather-city") || ""
-	);
+	const [cityName, setCityName] = useState<string>(() => {
+		const saved = localStorage.getItem("bloom-weather-city");
+		if (saved && !saved.toLowerCase().includes("delhi")) return saved;
+		return UJUNGBERUNG_CITY;
+	});
 	const [tempUnit, setTempUnit] = useState<string>(
 		() => localStorage.getItem("bloom-temp-unit") || "celsius"
 	);

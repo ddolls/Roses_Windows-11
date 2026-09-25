@@ -1966,3 +1966,132 @@ img {
 	font-size: 11px;
 	opacity: 0.6;
 }
+
+/* Control Center Sound Device Panel */
+.sound-device-panel {
+	width: 100%;
+	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.05));
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.08));
+	border-radius: 12px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+	padding: 8px 10px;
+	box-sizing: border-box;
+	margin: 2px 0;
+	overflow: hidden;
+}
+
+.sound-device-popup-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0 2px 6px 2px;
+	border-bottom: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.08));
+	margin-bottom: 6px;
+}
+
+.sound-device-popup-title {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.65));
+}
+
+.sound-device-settings-link {
+	background: transparent;
+	border: none;
+	color: #ff6b8b;
+	font-size: 11px;
+	cursor: pointer;
+	padding: 1px 5px;
+	border-radius: 4px;
+	transition: background 0.15s;
+}
+
+.sound-device-settings-link:hover {
+	background: rgba(255, 107, 139, 0.15);
+	text-decoration: underline;
+}
+
+.sound-device-close-btn {
+	background: transparent;
+	border: none;
+	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.6));
+	font-size: 11px;
+	cursor: pointer;
+	padding: 1px 5px;
+	border-radius: 4px;
+	line-height: 1;
+	transition: all 0.15s;
+}
+
+.sound-device-close-btn:hover {
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff;
+}
+
+.sound-device-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	max-height: 95px;
+	overflow-y: auto;
+}
+
+.sound-device-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 8px;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.03));
+	color: var(--bloom-text, rgba(255, 255, 255, 0.85));
+	font-size: 12px;
+}
+
+.sound-device-item:hover {
+	background: var(--bloom-border, rgba(255, 255, 255, 0.12));
+	color: #fff;
+}
+
+.sound-device-item.active {
+	background: rgba(255, 75, 110, 0.22);
+	border: 1px solid rgba(255, 75, 110, 0.45);
+	color: #fff;
+	font-weight: 500;
+}
+
+.sound-device-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.7;
+}
+
+.sound-device-item.active .sound-device-icon {
+	opacity: 1;
+	color: #ff6b8b;
+}
+
+.sound-device-name {
+	flex: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 11.5px;
+}
+
+.sound-device-check {
+	color: #ff6b8b;
+	font-weight: bold;
+	font-size: 12px;
+}
+
+.sound-device-loading {
+	padding: 8px;
+	text-align: center;
+	font-size: 11px;
+	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.5));
+}

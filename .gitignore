@@ -36,3 +36,10 @@ skills-lock.json
 
 #agents
 .mimocode
+
+# Executables and installers
+*.exe
+*.msi
+
+# Temporary & scratch
+scratch/

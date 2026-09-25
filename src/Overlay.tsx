@@ -518,7 +518,7 @@ function OverlayApp() {
 						exit={{ opacity: 0 }}
 						transition={{ duration: 0.3 }}
 					>
-						<img src="/bloom.png" className="update-splash-logo" alt="Bloom" />
+						<img src="/roses.png" className="update-splash-logo" alt="Roses" />
 						<p className="update-splash-text">
 							{updateStatus === "checking" && "Checking for updates..."}
 							{updateStatus === "downloading" && `Downloading update... ${updateProgress}%`}

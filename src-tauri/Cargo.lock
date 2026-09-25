@@ -415,28 +415,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bloom"
-version = "3.8.7"
-dependencies = [
- "base64 0.22.1",
- "image",
- "rustfft",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-dialog",
- "tauri-plugin-drag",
- "tauri-plugin-opener",
- "tauri-plugin-updater",
- "tokio",
- "window-vibrancy 0.7.1",
- "windows 0.61.3",
- "wmi",
-]
-
-[[package]]
 name = "brotli"
 version = "8.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4062,6 +4040,28 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "roses"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "image",
+ "rustfft",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-dialog",
+ "tauri-plugin-drag",
+ "tauri-plugin-opener",
+ "tauri-plugin-updater",
+ "tokio",
+ "window-vibrancy 0.7.1",
+ "windows 0.61.3",
+ "wmi",
 ]
 
 [[package]]

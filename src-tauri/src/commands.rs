@@ -106,7 +106,7 @@ pub async fn init_dock(app: AppHandle, mode: String) {
                         .outer_size()
                         .map(|s| s.height as i32)
                         .unwrap_or(0);
-                    let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+                    let monitor_info = crate::utils::get_target_monitor(dock_clone.app_handle()).map(|m| {
                         let s = m.size();
                         let p = m.position();
                         (
@@ -254,7 +254,7 @@ pub async fn change_dock_mode(app: AppHandle, mode: String) {
                             .outer_size()
                             .map(|s| s.height as i32)
                             .unwrap_or(0);
-                        let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+                        let monitor_info = crate::utils::get_target_monitor(dock_clone.app_handle()).map(|m| {
                             let s = m.size();
                             let p = m.position();
                             (
@@ -356,8 +356,8 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
                 });
             }
         }
-        // Reposition window to span the full primary monitor so CSS justify-content:center works
-        if let Ok(Some(monitor)) = main_win.primary_monitor() {
+        // Reposition window to span the full target monitor so CSS justify-content:center works
+        if let Some(monitor) = crate::utils::get_target_monitor(main_win.app_handle()) {
             let m_pos = monitor.position();
             let m_size = monitor.size();
             let scale = monitor.scale_factor();
@@ -453,54 +453,18 @@ fn send_key_tap(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY, ho
     }
 }
 
-/// True while the native Start menu owns the foreground window.
-/// Depending on the Windows build it is hosted by StartMenuExperienceHost
-/// (older) or SearchHost (Windows 11 24H2+), so match both. The dock is
-/// WS_EX_NOACTIVATE, so clicking it never steals focus from an open menu.
-fn is_start_menu_open() -> bool {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
-
-    unsafe {
-        let fg = GetForegroundWindow();
-        if fg.0.is_null() {
-            return false;
-        }
-        let mut pid = 0u32;
-        GetWindowThreadProcessId(fg, Some(&mut pid));
-        if pid == 0 {
-            return false;
-        }
-        if let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-            let mut buf = [0u16; 260];
-            let mut len = buf.len() as u32;
-            let ok = QueryFullProcessImageNameW(
-                process,
-                PROCESS_NAME_WIN32,
-                windows::core::PWSTR(buf.as_mut_ptr()),
-                &mut len,
-            );
-            let _ = CloseHandle(process);
-            if ok.is_ok() {
-                let path = String::from_utf16_lossy(&buf[..len as usize]);
-                let file = path.rsplit('\\').next().unwrap_or("").to_lowercase();
-                return file == "startmenuexperiencehost.exe" || file == "searchhost.exe";
-            }
-        }
-        false
-    }
-}
-
-/// Toggle the native Start menu. Checks whether the menu currently owns the
-/// foreground window instead of blindly tapping Win: rapid Win taps are ignored
-/// by the shell while the menu animates, which made a second click replay the
-/// open animation. When the menu is open it is dismissed with Escape, which is
-/// deterministic. The tiny debounce only coalesces duplicate events; it must
-/// stay well below the double-click interval so a double-click still closes.
+/// Toggle the native Start menu using an internal open/close state.
+///
+/// Why not query the OS? Clicking the dock (WS_EX_NOACTIVATE) triggers
+/// Windows' "light-dismiss" on the Start Menu — the menu closes itself before
+/// our spawn_blocking thread even runs. So any OS query would always see the
+/// menu as closed and keep re-opening it.
+///
+/// Instead we track when WE last opened it. A second click within
+/// START_MENU_ASSUME_OPEN_MS is treated as "please close".
+/// If the user dismissed the menu via keyboard or clicking elsewhere, the
+/// next click opens it again anyway — sending an extra Escape to an already-
+/// closed desktop is harmless.
 fn toggle_start_menu() {
     let now = get_now_ms();
     if now - LAST_START_TOGGLE_MS.load(Ordering::Relaxed) < START_TOGGLE_DEBOUNCE_MS {
@@ -510,10 +474,19 @@ fn toggle_start_menu() {
 
     tauri::async_runtime::spawn_blocking(move || {
         use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_LWIN};
-        if is_start_menu_open() {
+
+        let opened_at = START_MENU_OPENED_AT_MS.load(Ordering::Relaxed);
+        // Assume the menu is still open if we opened it less than 30 s ago.
+        let assume_open = opened_at > 0 && (now - opened_at) < 30_000;
+
+        if assume_open {
+            // Close the Start Menu with Escape.
             send_key_tap(VK_ESCAPE, 0);
+            START_MENU_OPENED_AT_MS.store(0, Ordering::Relaxed);
         } else {
+            // Open the Start Menu with the Windows key.
             send_key_tap(VK_LWIN, START_WIN_KEY_HOLD_MS);
+            START_MENU_OPENED_AT_MS.store(now, Ordering::Relaxed);
         }
     });
 }
@@ -525,7 +498,7 @@ pub async fn open_app(app: AppHandle, app_name: String) {
         return;
     }
 
-    if app_name == "bloom-settings" {
+    if app_name == "bloom-settings" || app_name == "roses-settings" {
         open_settings_window(app);
         return;
     }
@@ -1885,7 +1858,7 @@ pub fn set_splash_fullscreen(app: AppHandle, fullscreen: bool) {
     if let Some(win) = app.get_webview_window("overlay") {
         if fullscreen {
             let _ = win.hide();
-            if let Ok(Some(monitor)) = win.primary_monitor() {
+            if let Some(monitor) = crate::utils::get_target_monitor(win.app_handle()) {
                 let size = monitor.size();
                 let pos = monitor.position();
                 let _ = win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
@@ -1935,6 +1908,147 @@ pub fn open_sound_settings() {
             windows::core::PCSTR::null(),
             SW_SHOWNORMAL,
         );
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct AudioOutputDevice {
+    pub id: String,
+    pub name: String,
+    pub is_default: bool,
+}
+
+#[repr(C)]
+struct IPolicyConfigVtbl {
+    parent: windows::core::IUnknown_Vtbl,
+    get_mix_format: usize,
+    get_device_format: usize,
+    reset_device_format: usize,
+    set_device_format: usize,
+    get_processing_period: usize,
+    set_processing_period: usize,
+    get_share_mode: usize,
+    set_share_mode: usize,
+    get_property_value: usize,
+    set_property_value: usize,
+    set_default_endpoint: unsafe extern "system" fn(
+        *mut std::ffi::c_void,
+        windows::core::PCWSTR,
+        i32,
+    ) -> windows::core::HRESULT,
+    set_endpoint_visibility: usize,
+}
+
+#[tauri::command]
+pub fn get_audio_output_devices() -> Result<Vec<AudioOutputDevice>, String> {
+    use windows::Win32::Foundation::PROPERTYKEY;
+    use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, DEVICE_STATE_ACTIVE};
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM};
+    use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+        let enumerator: IMMDeviceEnumerator = CoCreateInstance(
+            &windows::Win32::Media::Audio::MMDeviceEnumerator,
+            None,
+            CLSCTX_ALL,
+        )
+        .map_err(|e| format!("CoCreateInstance failed: {:?}", e))?;
+
+        let mut default_id = String::new();
+        if let Ok(def_dev) = enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
+            if let Ok(id) = def_dev.GetId() {
+                default_id = windows::core::PCWSTR::from_raw(id.0).to_string().unwrap_or_default();
+                CoTaskMemFree(Some(id.0 as *const _));
+            }
+        }
+
+        let collection = enumerator
+            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .map_err(|e| format!("EnumAudioEndpoints failed: {:?}", e))?;
+
+        let count = collection
+            .GetCount()
+            .map_err(|e| format!("GetCount failed: {:?}", e))?;
+
+        let pkey = PROPERTYKEY {
+            fmtid: windows::core::GUID::from_u128(0xa45c254e_df1c_4efd_8020_67d146a850e0),
+            pid: 14,
+        };
+
+        let mut devices = Vec::new();
+        for i in 0..count {
+            if let Ok(dev) = collection.Item(i) {
+                let mut dev_id = String::new();
+                if let Ok(id) = dev.GetId() {
+                    dev_id = windows::core::PCWSTR::from_raw(id.0).to_string().unwrap_or_default();
+                    CoTaskMemFree(Some(id.0 as *const _));
+                }
+
+                let mut name = "Audio Output".to_string();
+                if let Ok(store) = dev.OpenPropertyStore(STGM(0)) {
+                    if let Ok(mut pv) = store.GetValue(&pkey as *const _) {
+                        let ptr = pv.Anonymous.Anonymous.Anonymous.pwszVal.0;
+                        if !ptr.is_null() {
+                            name = windows::core::PCWSTR::from_raw(ptr).to_string().unwrap_or_else(|_| "Audio Output".to_string());
+                        }
+                        let _ = PropVariantClear(&mut pv);
+                    }
+                }
+
+                let is_default = !dev_id.is_empty() && dev_id == default_id;
+                devices.push(AudioOutputDevice {
+                    id: dev_id,
+                    name,
+                    is_default,
+                });
+            }
+        }
+
+        Ok(devices)
+    }
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn set_audio_output_device(device_id: Option<String>, deviceId: Option<String>) -> Result<(), String> {
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
+    use windows::core::Interface;
+
+    let target_id = device_id.or(deviceId).ok_or("No device_id provided")?;
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+        let clsid = windows::core::GUID::from_u128(0x870af99c_171d_4f9e_af0d_e63df40c2bc9);
+        let unk: windows::core::IUnknown = CoCreateInstance(&clsid, None, CLSCTX_ALL)
+            .map_err(|e| format!("PolicyConfig create failed: {:?}", e))?;
+
+        let iid_policy = windows::core::GUID::from_u128(0xf8679f50_850a_41cf_9c72_430f290290c8);
+        let mut policy_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+        let hr = unk.query(&iid_policy, &mut policy_ptr);
+        if hr.is_err() || policy_ptr.is_null() {
+            return Err(format!("QueryInterface for IPolicyConfig failed: {:?}", hr));
+        }
+
+        let dev_w: Vec<u16> = target_id.encode_utf16().chain(std::iter::once(0)).collect();
+        let pcwstr = windows::core::PCWSTR(dev_w.as_ptr());
+
+        let vtbl = *(policy_ptr as *mut *mut IPolicyConfigVtbl);
+        // Set for Console (0), Multimedia (1), Communications (2)
+        let r0 = ((*vtbl).set_default_endpoint)(policy_ptr, pcwstr, 0);
+        let r1 = ((*vtbl).set_default_endpoint)(policy_ptr, pcwstr, 1);
+        let r2 = ((*vtbl).set_default_endpoint)(policy_ptr, pcwstr, 2);
+
+        let unk_vtbl = *(policy_ptr as *mut *mut windows::core::IUnknown_Vtbl);
+        ((*unk_vtbl).Release)(policy_ptr);
+
+        if r0.is_err() && r1.is_err() && r2.is_err() {
+            return Err(format!("SetDefaultEndpoint failed: {:?}, {:?}, {:?}", r0, r1, r2));
+        }
+
+        Ok(())
     }
 }
 
@@ -2391,7 +2505,8 @@ pub async fn close_window(hwnd: isize) {
 fn re_register_appbars(app: &AppHandle, settings: &HashMap<String, serde_json::Value>) {
     if let Some(main_win) = app.get_webview_window("main") {
         let notch_fixed = settings
-            .get("bloom-notch-mode")
+            .get("roses-notch-mode")
+            .or_else(|| settings.get("bloom-notch-mode"))
             .map(|v| v.as_str() == Some("fixed"))
             .unwrap_or(true);
         if notch_fixed {
@@ -2400,7 +2515,8 @@ fn re_register_appbars(app: &AppHandle, settings: &HashMap<String, serde_json::V
     }
     if let Some(dock_win) = app.get_webview_window("dock") {
         let is_fixed = settings
-            .get("bloom-dock-mode")
+            .get("roses-dock-mode")
+            .or_else(|| settings.get("bloom-dock-mode"))
             .map(|v| v.as_str() == Some("fixed"))
             .unwrap_or(false);
         if is_fixed {
@@ -2425,19 +2541,38 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
             settings = existing;
         }
     }
-    settings.insert(key.clone(), value);
+
+    let (key1, key2) = if let Some(stripped) = key.strip_prefix("bloom-") {
+        (key.clone(), Some(format!("roses-{}", stripped)))
+    } else if let Some(stripped) = key.strip_prefix("roses-") {
+        (key.clone(), Some(format!("bloom-{}", stripped)))
+    } else {
+        (key.clone(), None)
+    };
+
+    settings.insert(key1.clone(), value.clone());
+    if let Some(ref k2) = key2 {
+        settings.insert(k2.clone(), value.clone());
+    }
+
     let content = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
     std::fs::write(path, content).map_err(|e| e.to_string())?;
 
     crate::utils::replace_settings_cache(settings.clone());
 
-    // Broadcast so all windows sync — emit the key as-is (bloom-prefixed)
+    // Broadcast so all windows sync
     let _ = app.emit(
         "settings-changed",
-        serde_json::json!({ "key": &key, "value": &settings[&key] }),
+        serde_json::json!({ "key": &key1, "value": &value }),
     );
+    if let Some(ref k2) = key2 {
+        let _ = app.emit(
+            "settings-changed",
+            serde_json::json!({ "key": k2, "value": &value }),
+        );
+    }
 
-    if key == "bloom-scale" {
+    if key == "bloom-scale" || key == "roses-scale" {
         re_register_appbars(&app, &settings);
     }
     Ok(())
@@ -2450,8 +2585,17 @@ pub fn load_settings(app: AppHandle) -> Result<HashMap<String, serde_json::Value
         Err(_) => return Ok(HashMap::new()),
     };
     if let Ok(content) = std::fs::read_to_string(path) {
-        if let Ok(settings) = serde_json::from_str(&content) {
-            return Ok(settings);
+        if let Ok(settings) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&content) {
+            let mut result = HashMap::new();
+            for (k, v) in settings {
+                if let Some(stripped) = k.strip_prefix("bloom-") {
+                    result.insert(format!("roses-{}", stripped), v.clone());
+                } else if let Some(stripped) = k.strip_prefix("roses-") {
+                    result.insert(format!("bloom-{}", stripped), v.clone());
+                }
+                result.insert(k, v);
+            }
+            return Ok(result);
         }
     }
     Ok(HashMap::new())
@@ -2935,9 +3079,24 @@ pub fn export_settings(app: AppHandle) -> Result<String, String> {
         .join("settings.json");
     if let Ok(content) = std::fs::read_to_string(&path) {
         // Validate it's valid JSON before returning
-        let _settings: HashMap<String, serde_json::Value> =
+        let settings: HashMap<String, serde_json::Value> =
             serde_json::from_str(&content).map_err(|e| format!("Invalid settings file: {}", e))?;
-        Ok(content)
+
+        let mut exported = serde_json::Map::new();
+        for (k, v) in settings {
+            let key = if let Some(stripped) = k.strip_prefix("bloom-") {
+                format!("roses-{}", stripped)
+            } else if let Some(stripped) = k.strip_prefix("bloom_") {
+                format!("roses_{}", stripped)
+            } else {
+                k
+            };
+            if !exported.contains_key(&key) {
+                exported.insert(key, v);
+            }
+        }
+        let pretty = serde_json::to_string_pretty(&exported).map_err(|e| e.to_string())?;
+        Ok(pretty)
     } else {
         Err("No settings file found".into())
     }
@@ -2955,7 +3114,7 @@ pub fn write_settings_to_path(path: String, content: String) -> Result<(), Strin
 
 #[tauri::command]
 pub fn import_settings(app: AppHandle, settings: String) -> Result<(), String> {
-    let imported: HashMap<String, serde_json::Value> =
+    let imported_raw: HashMap<String, serde_json::Value> =
         serde_json::from_str(&settings).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     let path = app
@@ -2965,6 +3124,19 @@ pub fn import_settings(app: AppHandle, settings: String) -> Result<(), String> {
         .join("settings.json");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
+    }
+
+    let mut imported: HashMap<String, serde_json::Value> = HashMap::new();
+    for (k, v) in imported_raw {
+        if let Some(stripped) = k.strip_prefix("roses-") {
+            imported.insert(format!("bloom-{}", stripped), v.clone());
+            imported.insert(k, v);
+        } else if let Some(stripped) = k.strip_prefix("bloom-") {
+            imported.insert(format!("roses-{}", stripped), v.clone());
+            imported.insert(k, v);
+        } else {
+            imported.insert(k, v);
+        }
     }
 
     let content = serde_json::to_string_pretty(&imported).map_err(|e| e.to_string())?;
@@ -2980,7 +3152,7 @@ pub fn import_settings(app: AppHandle, settings: String) -> Result<(), String> {
         );
     }
 
-    if imported.get("bloom-scale").is_some() {
+    if imported.get("bloom-scale").is_some() || imported.get("roses-scale").is_some() {
         re_register_appbars(&app, &imported);
     }
 
@@ -3111,6 +3283,216 @@ pub fn setup_settings_watcher(app: AppHandle) {
             let _ = CloseHandle(dir_handle);
         }
     });
+}
+
+#[tauri::command]
+pub fn is_high_priority_startup_enabled() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let output = Command::new("schtasks")
+            .args(["/query", "/tn", "RosesStartup"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        if let Ok(out) = output {
+            return out.status.success();
+        }
+    }
+    false
+}
+
+#[tauri::command]
+pub fn set_high_priority_startup(enable: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        crate::utils::disable_startup_delay();
+
+        if enable {
+            let exe_path = if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+                let installed = std::path::PathBuf::from(local).join("Roses").join("roses.exe");
+                if installed.exists() {
+                    installed
+                } else {
+                    std::env::current_exe().map_err(|e| e.to_string())?
+                }
+            } else {
+                std::env::current_exe().map_err(|e| e.to_string())?
+            };
+            let exe_str = exe_path.to_string_lossy().to_string();
+
+            // 1. Try direct execution (works if running as Admin or UAC is disabled)
+            let direct = Command::new("schtasks")
+                .args([
+                    "/create",
+                    "/tn",
+                    "RosesStartup",
+                    "/tr",
+                    &format!("'{}' --autostart", exe_str),
+                    "/sc",
+                    "onlogon",
+                    "/delay",
+                    "0000:00",
+                    "/rl",
+                    "highest",
+                    "/f",
+                ])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+
+            if let Ok(s) = direct {
+                if s.success() {
+                    return Ok(());
+                }
+            }
+
+            // 2. If direct execution didn't succeed, execute via temporary batch file elevated with RunAs
+            let temp_bat = std::env::temp_dir().join("roses_create_priority_task.bat");
+            let bat_content = format!(
+                "@echo off\r\nschtasks /create /tn \"RosesStartup\" /tr \"'{}' --autostart\" /sc onlogon /delay 0000:00 /rl highest /f\r\n",
+                exe_str
+            );
+            let _ = std::fs::write(&temp_bat, bat_content);
+
+            let ps_cmd = format!(
+                "Start-Process -FilePath '{}' -Verb RunAs -WindowStyle Hidden -Wait",
+                temp_bat.to_string_lossy()
+            );
+            let _ = Command::new("powershell")
+                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_cmd])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+
+            let _ = std::fs::remove_file(temp_bat);
+        } else {
+            // 1. Try direct deletion
+            let direct = Command::new("schtasks")
+                .args(["/delete", "/tn", "RosesStartup", "/f"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+
+            if let Ok(s) = direct {
+                if s.success() {
+                    return Ok(());
+                }
+            }
+
+            // 2. Fallback to elevated deletion via temporary batch file
+            let temp_bat = std::env::temp_dir().join("roses_delete_priority_task.bat");
+            let _ = std::fs::write(&temp_bat, "@echo off\r\nschtasks /delete /tn \"RosesStartup\" /f\r\n");
+
+            let ps_cmd = format!(
+                "Start-Process -FilePath '{}' -Verb RunAs -WindowStyle Hidden -Wait",
+                temp_bat.to_string_lossy()
+            );
+            let _ = Command::new("powershell")
+                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_cmd])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+
+            let _ = std::fs::remove_file(temp_bat);
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(())
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct MonitorOption {
+    pub id: String,
+    pub name: String,
+    pub is_primary: bool,
+    pub width: u32,
+    pub height: u32,
+    pub scale_factor: f64,
+}
+
+#[tauri::command]
+pub fn get_available_monitors(app: AppHandle) -> Vec<MonitorOption> {
+    let mut result = Vec::new();
+    let primary_name = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .and_then(|m| m.name().map(|s| s.to_string()));
+
+    if let Ok(monitors) = app.available_monitors() {
+        for (i, m) in monitors.into_iter().enumerate() {
+            let m_name = m
+                .name()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("Display {}", i + 1));
+            let is_primary = primary_name.as_deref() == Some(&m_name);
+            let size = m.size();
+            let label = if is_primary {
+                format!("Monitor {} - {}x{} (Primary)", i + 1, size.width, size.height)
+            } else {
+                format!("Monitor {} - {}x{}", i + 1, size.width, size.height)
+            };
+            result.push(MonitorOption {
+                id: m_name,
+                name: label,
+                is_primary,
+                width: size.width,
+                height: size.height,
+                scale_factor: m.scale_factor(),
+            });
+        }
+    }
+    result
+}
+
+#[tauri::command]
+pub async fn set_target_monitor(app: AppHandle, monitor_id: String) {
+    let _ = save_setting(
+        app.clone(),
+        "roses-target-monitor".into(),
+        serde_json::Value::String(monitor_id.clone()),
+    );
+    let _ = save_setting(
+        app.clone(),
+        "bloom-target-monitor".into(),
+        serde_json::Value::String(monitor_id),
+    );
+
+    crate::services::reset_mouse_hook_monitor_cache();
+
+    // 1. Unregister appbars on old monitor
+    if let Some(main_win) = app.get_webview_window("main") {
+        if let Ok(hwnd) = main_win.hwnd() {
+            crate::services::unregister_appbar_native(hwnd);
+        }
+        MAIN_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
+    }
+
+    if let Some(dock_win) = app.get_webview_window("dock") {
+        if let Ok(hwnd) = dock_win.hwnd() {
+            crate::services::unregister_appbar_native(hwnd);
+        }
+        DOCK_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // 2. Re-register on target monitor
+    if let Some(main_win) = app.get_webview_window("main") {
+        crate::services::register_appbar(main_win);
+    }
+
+    if let Some(dock_win) = app.get_webview_window("dock") {
+        crate::services::register_dock_appbar(dock_win.clone());
+        let _ = dock_win.emit("refresh-dock-bounds", ());
+    }
+
+    crate::services::sync_overlays(&app);
 }
 
 #[cfg(test)]

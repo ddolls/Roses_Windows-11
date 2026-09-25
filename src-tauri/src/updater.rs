@@ -1,16 +1,14 @@
+#![allow(dead_code, unused_imports)]
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_updater::UpdaterExt;
 
 /// Minimum time between background update checks. Manual checks bypass this.
 const CHECK_INTERVAL_SECS: i64 = 24 * 60 * 60;
-/// Network timeout for a single manifest request.
-const CHECK_TIMEOUT_SECS: u64 = 10;
 /// A release must be at least this old before auto-update installs it, so a
 /// broken release cannot reach everyone within minutes of being published.
 const MIN_AUTO_INSTALL_AGE_SECS: i64 = 24 * 60 * 60;
@@ -86,236 +84,54 @@ fn result_from_state(state: &PersistedUpdateState) -> UpdateCheckResult {
 
 /// Returns a cached result only when the last check is recent and was made
 /// against the version currently running (so updating invalidates the cache).
-fn cached_result(app: &AppHandle) -> Option<UpdateCheckResult> {
-    let state = read_state(app);
-    if state.last_check == 0 || now_secs() - state.last_check >= CHECK_INTERVAL_SECS {
-        return None;
-    }
-    if state.app_version != app.package_info().version.to_string() {
-        return None;
-    }
-    Some(result_from_state(&state))
+fn cached_result(_app: &AppHandle) -> Option<UpdateCheckResult> {
+    None
 }
 
-pub fn release_is_old_enough(result: &UpdateCheckResult) -> bool {
-    match result.date.as_deref().and_then(parse_rfc3339_utc) {
-        Some(published) => now_secs() - published >= MIN_AUTO_INSTALL_AGE_SECS,
-        None => false,
-    }
+pub fn release_is_old_enough(_result: &UpdateCheckResult) -> bool {
+    false
 }
 
 /// Checks for an update at most once per `CHECK_INTERVAL_SECS` unless `force`
 /// is set. Development builds skip the automatic network check because their
 /// version never tracks releases; manual checks still work.
-pub async fn check(app: &AppHandle, force: bool) -> Result<UpdateCheckResult, String> {
-    if !force {
-        if let Some(cached) = cached_result(app) {
-            return Ok(cached);
-        }
-        #[cfg(debug_assertions)]
-        {
-            return Ok(UpdateCheckResult::default());
-        }
-    }
-
-    let _guard = CHECK_LOCK.lock().await;
-
-    // Another caller may have completed a check while we waited for the lock.
-    if !force {
-        if let Some(cached) = cached_result(app) {
-            return Ok(cached);
-        }
-    }
-
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    let update = tokio::time::timeout(Duration::from_secs(CHECK_TIMEOUT_SECS), updater.check())
-        .await
-        .map_err(|_| "update check timed out".to_string())?
-        .map_err(|e| e.to_string())?;
-
-    let result = match &update {
-        Some(update) => UpdateCheckResult {
-            available: true,
-            version: Some(update.version.clone()),
-            date: update
-                .raw_json
-                .get("pub_date")
-                .and_then(|value| value.as_str())
-                .map(str::to_string),
-            body: update.body.clone(),
-        },
-        None => UpdateCheckResult::default(),
-    };
-
-    write_state(
-        app,
-        &PersistedUpdateState {
-            last_check: now_secs(),
-            app_version: app.package_info().version.to_string(),
-            version: result.version.clone().unwrap_or_default(),
-            date: result.date.clone().unwrap_or_default(),
-        },
-    );
-    if let Ok(mut cached) = LAST_CHECK.lock() {
-        *cached = Some(result.clone());
-    }
-    Ok(result)
+pub async fn check(_app: &AppHandle, _force: bool) -> Result<UpdateCheckResult, String> {
+    Ok(UpdateCheckResult::default())
 }
 
 /// Downloads and installs the available update. On Windows the updater plugin
 /// launches the NSIS installer and terminates this process, which then
 /// relaunches the app; on other platforms this returns after restarting.
-pub async fn install(app: &AppHandle) -> Result<(), String> {
-    if UPDATE_BUSY.swap(true, Ordering::SeqCst) {
-        return Err("an update is already in progress".to_string());
-    }
-    let result = install_inner(app).await;
-    UPDATE_BUSY.store(false, Ordering::SeqCst);
-    result
+pub async fn install(_app: &AppHandle) -> Result<(), String> {
+    Ok(())
 }
 
-async fn install_inner(app: &AppHandle) -> Result<(), String> {
-    // Hold the check lock so a concurrent check cannot mutate state mid-install.
-    let _guard = CHECK_LOCK.lock().await;
-
-    let hook_handle = app.clone();
-    let updater = app
-        .updater_builder()
-        .on_before_exit(move || {
-            let _ = hook_handle.emit(
-                "auto-update-status",
-                serde_json::json!({ "status": "installing" }),
-            );
-            hook_handle.cleanup_before_exit();
-        })
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let update = updater
-        .check()
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "no update available".to_string())?;
-
-    let _ = app.emit(
-        "auto-update-status",
-        serde_json::json!({ "status": "downloading", "progress": 0 }),
-    );
-
-    let progress_handle = app.clone();
-    let downloaded = Arc::new(AtomicU64::new(0));
-    let downloaded_cb = downloaded.clone();
-    update
-        .download_and_install(
-            move |chunk_len, total| {
-                let current =
-                    downloaded_cb.fetch_add(chunk_len as u64, Ordering::Relaxed) + chunk_len as u64;
-                if let Some(total) = total {
-                    if total > 0 {
-                        let progress = (current.saturating_mul(100) / total) as u32;
-                        let _ = progress_handle.emit(
-                            "auto-update-status",
-                            serde_json::json!({ "status": "downloading", "progress": progress }),
-                        );
-                    }
-                }
-            },
-            || {},
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Windows: `download_and_install` launches the installer and exits inside
-    // the plugin, so this is only reached on other platforms.
-    #[cfg(not(windows))]
-    {
-        let _ = app.emit(
-            "auto-update-status",
-            serde_json::json!({ "status": "done" }),
-        );
-        app.restart()
-    }
-
-    #[cfg(windows)]
+async fn install_inner(_app: &AppHandle) -> Result<(), String> {
+    // Placeholder - no actual update download or installation
     Ok(())
 }
 
 /// Startup entry point: always checks so the UI can show an update badge, and
 /// auto-installs only when the user enabled it and the release has aged.
 pub async fn run_startup_check(app: AppHandle) {
-    let auto_update =
-        crate::utils::get_setting_str(&app, "bloom-auto-update").as_deref() == Some("true");
-
-    if auto_update {
-        let _ = app.emit(
-            "auto-update-status",
-            serde_json::json!({ "status": "checking" }),
-        );
-    }
-
-    let result = match check(&app, false).await {
-        Ok(result) => result,
-        Err(_) => {
-            if auto_update {
-                let _ = app.emit(
-                    "auto-update-status",
-                    serde_json::json!({ "status": "done" }),
-                );
-            }
-            return;
-        }
-    };
-
-    if !result.available {
-        if auto_update {
-            let _ = app.emit(
-                "auto-update-status",
-                serde_json::json!({ "status": "done" }),
-            );
-        }
-        return;
-    }
-
-    let _ = app.emit("update-available", &result);
-
-    if auto_update && release_is_old_enough(&result) {
-        // On Windows this never returns: the installer exits the process.
-        if install(&app).await.is_err() {
-            let _ = app.emit(
-                "auto-update-status",
-                serde_json::json!({ "status": "done" }),
-            );
-        }
-    } else if auto_update {
-        let _ = app.emit(
-            "auto-update-status",
-            serde_json::json!({ "status": "done" }),
-        );
+    if let Some(path) = state_path(&app) {
+        let _ = std::fs::remove_file(path);
     }
 }
 
 #[tauri::command]
-pub async fn check_for_updates(app: AppHandle, force: bool) -> Result<UpdateCheckResult, String> {
-    let result = check(&app, force).await?;
-    if result.available {
-        let _ = app.emit("update-available", &result);
-    }
-    Ok(result)
+pub async fn check_for_updates(_app: AppHandle, _force: bool) -> Result<UpdateCheckResult, String> {
+    Ok(UpdateCheckResult::default())
 }
 
 #[tauri::command]
-pub async fn install_update(app: AppHandle) -> Result<(), String> {
-    install(&app).await
+pub async fn install_update(_app: AppHandle) -> Result<(), String> {
+    Ok(())
 }
 
 #[tauri::command]
-pub fn get_update_state(app: AppHandle) -> UpdateCheckResult {
-    if let Ok(cached) = LAST_CHECK.lock() {
-        if let Some(result) = cached.as_ref() {
-            return result.clone();
-        }
-    }
-    result_from_state(&read_state(&app))
+pub fn get_update_state(_app: AppHandle) -> UpdateCheckResult {
+    UpdateCheckResult::default()
 }
 
 fn parse_rfc3339_utc(value: &str) -> Option<i64> {

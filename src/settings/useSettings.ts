@@ -6,10 +6,13 @@ import { getVersion } from "@tauri-apps/api/app";
 import type { UpdateCheckResult } from "../updater";
 import { useSettingsSync } from "../hooks/useSettingsSync";
 import { hexToHsl } from "../theme";
-import type { WidgetConfig } from "./types";
+import type { WidgetConfig, MonitorOption } from "./types";
 
 function saveSetting(key: string, value: string) {
 	localStorage.setItem(key, value);
+	const cleanKey = key.replace(/^(bloom|roses)-/, "");
+	localStorage.setItem(`roses-${cleanKey}`, value);
+	localStorage.setItem(`bloom-${cleanKey}`, value);
 	invoke("save_setting", { key, value }).catch(console.error);
 }
 
@@ -19,6 +22,11 @@ function readBool(val: string | null): boolean {
 
 export function useSettings() {
 	const [autostart, setAutostart] = useState(false);
+	const [highPriorityStartup, setHighPriorityStartup] = useState(false);
+	const [availableMonitors, setAvailableMonitors] = useState<MonitorOption[]>([]);
+	const [targetMonitor, setTargetMonitor] = useState<string>(
+		() => localStorage.getItem("roses-target-monitor") || localStorage.getItem("bloom-target-monitor") || "primary"
+	);
 	const [weatherEnabled, setWeatherEnabled] = useState(true);
 	const [calendarEnabled, setCalendarEnabled] = useState(true);
 	const [timerSoundEnabled, setTimerSoundEnabled] = useState(
@@ -44,6 +52,10 @@ export function useSettings() {
 	const [cornersEnabled, setCornersEnabled] = useState(
 		() => localStorage.getItem("bloom-corners-enabled") === "true"
 	);
+	const [cornersSize, setCornersSize] = useState<number>(() => {
+		const saved = localStorage.getItem("bloom-corners-size");
+		return saved ? parseFloat(saved) : 38;
+	});
 	const [showUpdateIndicator, setShowUpdateIndicator] = useState(
 		() => localStorage.getItem("bloom-show-update-indicator") !== "false"
 	);
@@ -63,7 +75,7 @@ export function useSettings() {
 	const [dockEnabled, setDockEnabled] = useState(true);
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(true);
 	const [dockIconOnly, setDockIconOnly] = useState(
-		() => localStorage.getItem("bloom-dock-icon-only") === "true"
+		() => localStorage.getItem("bloom-dock-icon-only") !== "false"
 	);
 	const [dockAdaptive, setDockAdaptive] = useState(
 		() => localStorage.getItem("bloom-dock-adaptive") === "true"
@@ -118,9 +130,17 @@ export function useSettings() {
 		try {
 			const settings: Record<string, string> = await invoke("load_settings");
 			const getVal = (key: string) => {
-				const val = settings[key];
+				const cleanKey = key.replace(/^(bloom|roses)-/, "");
+				const val =
+					settings[`roses-${cleanKey}`] ??
+					settings[`bloom-${cleanKey}`] ??
+					settings[key];
 				if (val !== undefined && val !== null) return String(val);
-				return localStorage.getItem(key);
+				return (
+					localStorage.getItem(`roses-${cleanKey}`) ??
+					localStorage.getItem(`bloom-${cleanKey}`) ??
+					localStorage.getItem(key)
+				);
 			};
 
 			const apply = <T>(
@@ -141,6 +161,7 @@ export function useSettings() {
 			apply(getVal("bloom-media-ambience-enabled"), setMediaAmbienceEnabled, readBool);
 			apply(getVal("bloom-media-compact-glow-enabled"), setMediaCompactGlowEnabled, readBool);
 			apply(getVal("bloom-corners-enabled"), setCornersEnabled, readBool);
+			apply(getVal("bloom-corners-size"), setCornersSize, parseFloat);
 			apply(getVal("bloom-time-format-24h"), setTimeFormat24h, readBool);
 			apply(getVal("bloom-show-update-indicator"), setShowUpdateIndicator, readBool);
 			apply(getVal("bloom-auto-update"), setAutoUpdate, readBool);
@@ -148,7 +169,7 @@ export function useSettings() {
 			apply(getVal("bloom-brightness-edge-enabled"), setBrightnessEdgeEnabled, readBool);
 			apply(getVal("bloom-dock-enabled"), setDockEnabled, readBool);
 			apply(getVal("bloom-dock-preview-enabled"), setDockPreviewEnabled, readBool);
-			apply(getVal("bloom-dock-icon-only"), setDockIconOnly, readBool);
+			apply(getVal("bloom-dock-icon-only"), setDockIconOnly, (v) => v !== "false");
 			apply(getVal("bloom-dock-adaptive"), setDockAdaptive, readBool);
 			apply(getVal("bloom-dock-win-number-enabled"), setDockWinNumberEnabled, readBool);
 
@@ -160,7 +181,11 @@ export function useSettings() {
 			apply(getVal("bloom-dock-mode"), setDockMode, (v) => (v === "auto-hide" ? "smart" : v));
 
 			const savedCity = getVal("bloom-weather-city");
-			if (savedCity) setCityName(savedCity);
+			if (savedCity && !savedCity.toLowerCase().includes("delhi")) {
+				setCityName(savedCity);
+			} else {
+				setCityName("Ujungberung, Kota Bandung");
+			}
 
 			apply(getVal("bloom-theme-mode"), setThemeMode, (v) => v);
 			apply(getVal("bloom-theme-color"), setThemeColor, (v) => v);
@@ -190,6 +215,14 @@ export function useSettings() {
 			.then(setAutostart)
 			.catch(() => {});
 
+		invoke<boolean>("is_high_priority_startup_enabled")
+			.then(setHighPriorityStartup)
+			.catch(() => {});
+
+		invoke<MonitorOption[]>("get_available_monitors")
+			.then((monitors) => setAvailableMonitors(monitors || []))
+			.catch(() => {});
+
 		getVersion()
 			.then((ver) => setAppVersion(ver || "3.1.2"))
 			.catch(() => setAppVersion("3.1.2"));
@@ -199,6 +232,8 @@ export function useSettings() {
 
 	// ── Sync settings from other windows ──
 	useSettingsSync({
+		"roses-target-monitor": setTargetMonitor,
+		"bloom-target-monitor": setTargetMonitor,
 		"bloom-dock-mode": setDockMode,
 		"bloom-notch-mode": setNotchMode,
 		"bloom-dock-enabled": setDockEnabled,
@@ -215,6 +250,7 @@ export function useSettings() {
 		"bloom-media-compact-glow-enabled": setMediaCompactGlowEnabled,
 		"bloom-media-layout": setMediaLayout,
 		"bloom-corners-enabled": setCornersEnabled,
+		"bloom-corners-size": (v) => setCornersSize(Number(v) || 38),
 		"bloom-show-update-indicator": setShowUpdateIndicator,
 		"bloom-time-format-24h": setTimeFormat24h,
 		"bloom-low-battery-threshold": setLowBatteryThreshold,
@@ -354,6 +390,30 @@ export function useSettings() {
 		} catch (err) {}
 	};
 
+	const toggleHighPriorityStartup = async () => {
+		const next = !highPriorityStartup;
+		try {
+			await invoke("set_high_priority_startup", { enable: next });
+			setHighPriorityStartup(next);
+			setTimeout(() => {
+				invoke<boolean>("is_high_priority_startup_enabled")
+					.then(setHighPriorityStartup)
+					.catch(() => {});
+			}, 1500);
+		} catch (err) {}
+	};
+
+	const handleTargetMonitorChange = async (monitorId: string) => {
+		setTargetMonitor(monitorId);
+		localStorage.setItem("roses-target-monitor", monitorId);
+		localStorage.setItem("bloom-target-monitor", monitorId);
+		try {
+			await invoke("set_target_monitor", { monitorId });
+		} catch (e) {
+			console.error("Failed to set target monitor:", e);
+		}
+	};
+
 	// ── Simple boolean toggles ──
 	const toggleWeather = () => {
 		const next = !weatherEnabled;
@@ -430,6 +490,12 @@ export function useSettings() {
 		const next = !cornersEnabled;
 		setCornersEnabled(next);
 		saveSetting("bloom-corners-enabled", String(next));
+	};
+
+	const handleCornersSizeChange = (val: number) => {
+		setCornersSize(val);
+		localStorage.setItem("bloom-corners-size", val.toString());
+		saveSetting("bloom-corners-size", val.toString());
 	};
 
 	const toggleUpdateIndicator = () => {
@@ -587,16 +653,16 @@ export function useSettings() {
 	};
 
 	const handleCityClear = async () => {
-		setCityName("");
+		setCityName("Ujungberung, Kota Bandung");
 		setShowCityDropdown(false);
 		setCitySearchResults([]);
-		localStorage.removeItem("bloom-weather-city");
-		localStorage.removeItem("bloom-weather-lat");
-		localStorage.removeItem("bloom-weather-lon");
-		await invoke("save_setting", { key: "bloom-weather-lat", value: null }).catch(() => {});
-		await invoke("save_setting", { key: "bloom-weather-lon", value: null }).catch(() => {});
-		await invoke("save_setting", { key: "bloom-weather-city", value: null }).catch(() => {});
-		emit("weather-refresh", true);
+		localStorage.setItem("bloom-weather-city", "Ujungberung, Kota Bandung");
+		localStorage.setItem("bloom-weather-lat", "-6.9175");
+		localStorage.setItem("bloom-weather-lon", "107.6961");
+		await invoke("save_setting", { key: "bloom-weather-lat", value: "-6.9175" }).catch(() => {});
+		await invoke("save_setting", { key: "bloom-weather-lon", value: "107.6961" }).catch(() => {});
+		await invoke("save_setting", { key: "bloom-weather-city", value: "Ujungberung, Kota Bandung" }).catch(() => {});
+		emit("weather-refresh", { lat: -6.9175, lon: 107.6961 });
 	};
 
 	// ── Export / Import ──
@@ -606,8 +672,8 @@ export function useSettings() {
 			const { save: saveDialog } = await import("@tauri-apps/plugin-dialog");
 			const settingsJson = await invoke<string>("export_settings");
 			const filePath = await saveDialog({
-				title: "Export Bloom Settings",
-				defaultPath: "bloom-settings.json",
+				title: "Export Roses Settings",
+				defaultPath: "roses-settings.json",
 				filters: [{ name: "JSON", extensions: ["json"] }]
 			});
 			if (filePath) {
@@ -629,7 +695,7 @@ export function useSettings() {
 		try {
 			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
 			const filePath = await openDialog({
-				title: "Import Bloom Settings",
+				title: "Import Roses Settings",
 				filters: [{ name: "JSON", extensions: ["json"] }],
 				multiple: false
 			});
@@ -655,6 +721,11 @@ export function useSettings() {
 		// System
 		autostart,
 		toggleAutostart,
+		highPriorityStartup,
+		toggleHighPriorityStartup,
+		availableMonitors,
+		targetMonitor,
+		handleTargetMonitorChange,
 		autoUpdate,
 		toggleAutoUpdate,
 		lowBatteryThreshold,
@@ -667,6 +738,8 @@ export function useSettings() {
 		handleScaleChange,
 		cornersEnabled,
 		toggleCorners,
+		cornersSize,
+		handleCornersSizeChange,
 
 		// Theme
 		themeMode,

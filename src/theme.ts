@@ -303,7 +303,12 @@ export function initTheme() {
 		"bloom-theme-color",
 		"bloom-theme-opacity",
 		"bloom-theme-saturation",
-		"bloom-theme-brightness"
+		"bloom-theme-brightness",
+		"roses-theme-mode",
+		"roses-theme-color",
+		"roses-theme-opacity",
+		"roses-theme-saturation",
+		"roses-theme-brightness"
 	];
 
 	// Listen to setting changes broadcasted from settings window

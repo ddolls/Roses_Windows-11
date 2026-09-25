@@ -1,4 +1,5 @@
 import { Download, RefreshCw, FileDown, Upload } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { SettingRow } from "./SettingRow";
 
 interface AboutTabProps {
@@ -16,7 +17,6 @@ interface AboutTabProps {
 }
 
 export function AboutTab({
-	appVersion,
 	autoUpdate,
 	toggleAutoUpdate,
 	updateStatus,
@@ -28,6 +28,8 @@ export function AboutTab({
 	handleExportSettings,
 	handleImportSettings
 }: AboutTabProps) {
+	const displayVersion = "dev-build_1.0.0-Montana";
+
 	const getUpdateLabel = () => {
 		switch (updateStatus) {
 			case "checking":
@@ -35,7 +37,7 @@ export function AboutTab({
 			case "available":
 				return `Update Available (v${updateVersion})`;
 			case "uptodate":
-				return "Bloom is up to date";
+				return "Roses is up to date";
 			case "downloading":
 				return "Downloading Update...";
 			case "installing":
@@ -50,7 +52,7 @@ export function AboutTab({
 	const getUpdateDesc = () =>
 		updateStatus === "available"
 			? "Click to install and restart"
-			: `Currently running v${appVersion}`;
+			: `Currently running ${displayVersion}`;
 
 	const getExportLabel = () => {
 		if (exportStatus === "exporting") return "Exporting...";
@@ -67,9 +69,9 @@ export function AboutTab({
 	return (
 		<div className="about-tab-container">
 			<div className="about-header">
-				<img src="/bloom.png" className="about-logo" alt="Bloom Logo" />
-				<h1 className="about-title">Bloom</h1>
-				<p className="about-version">Version {appVersion}</p>
+				<img src="/roses.png" className="about-logo" alt="Roses Logo" />
+				<h1 className="about-title">Roses</h1>
+				<p className="about-version">{displayVersion}</p>
 			</div>
 
 			<div className="setting-group-label">Software Updates</div>
@@ -111,7 +113,35 @@ export function AboutTab({
 			</div>
 
 			<div className="about-footer">
-				<p>Made with ❤️ by sehaz</p>
+				<a
+					href="https://saweria.co/itsmickeyyy"
+					target="_blank"
+					rel="noreferrer"
+					onClick={(e) => {
+						e.preventDefault();
+						invoke("open_app", { appName: "https://saweria.co/itsmickeyyy" }).catch(() => {
+							window.open("https://saweria.co/itsmickeyyy", "_blank");
+						});
+					}}
+					style={{
+						cursor: "pointer",
+						textDecoration: "none",
+						color: "inherit",
+						display: "inline-block"
+					}}
+					title="Support Montana on Saweria"
+				>
+					<p
+						style={{
+							cursor: "pointer",
+							transition: "all 0.2s ease"
+						}}
+						onMouseEnter={(e) => (e.currentTarget.style.color = "#ff758f")}
+						onMouseLeave={(e) => (e.currentTarget.style.color = "inherit")}
+					>
+						Made with ❤️ by Montana
+					</p>
+				</a>
 			</div>
 		</div>
 	);

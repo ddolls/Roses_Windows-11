@@ -33,7 +33,11 @@ export function useSettingsSync(
 	useEffect(() => {
 		const unlistenSC = listen<{ key: string; value: any }>("settings-changed", (event) => {
 			const { key, value } = event.payload;
-			const handler = handlersRef.current[key];
+			const cleanKey = key.replace(/^(bloom|roses)-/, "");
+			const handler =
+				handlersRef.current[key] ||
+				handlersRef.current[`roses-${cleanKey}`] ||
+				handlersRef.current[`bloom-${cleanKey}`];
 			if (handler && value !== null && value !== undefined) {
 				handler(convertSettingValue(value));
 			}
@@ -43,14 +47,22 @@ export function useSettingsSync(
 			"settings-external-changed",
 			(event) => {
 				const { key, value } = event.payload;
+				const cleanKey = key.replace(/^(bloom|roses)-/, "");
 
 				if (value !== null) {
 					localStorage.setItem(key, String(value));
+					localStorage.setItem(`roses-${cleanKey}`, String(value));
+					localStorage.setItem(`bloom-${cleanKey}`, String(value));
 				} else {
 					localStorage.removeItem(key);
+					localStorage.removeItem(`roses-${cleanKey}`);
+					localStorage.removeItem(`bloom-${cleanKey}`);
 				}
 
-				const handler = handlersRef.current[key];
+				const handler =
+					handlersRef.current[key] ||
+					handlersRef.current[`roses-${cleanKey}`] ||
+					handlersRef.current[`bloom-${cleanKey}`];
 				if (handler && value !== null && value !== undefined) {
 					handler(convertSettingValue(value));
 				}

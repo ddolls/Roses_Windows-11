@@ -71,7 +71,7 @@ function SettingsApp() {
 		<div className="settings-container" style={{ zoom: settings.scale }}>
 			<div className="title-bar" data-tauri-drag-region>
 				<span className="title-text" data-tauri-drag-region>
-					Settings
+					Roses Settings
 				</span>
 				<button className="close-btn" onClick={handleClose} title="Close Settings">
 					<X size={12} strokeWidth={1.5} className="close-btn-icon" />
@@ -99,6 +99,11 @@ function SettingsApp() {
 						<GeneralTab
 							autostart={settings.autostart}
 							toggleAutostart={settings.toggleAutostart}
+							highPriorityStartup={settings.highPriorityStartup}
+							toggleHighPriorityStartup={settings.toggleHighPriorityStartup}
+							availableMonitors={settings.availableMonitors}
+							targetMonitor={settings.targetMonitor}
+							handleTargetMonitorChange={settings.handleTargetMonitorChange}
 							timeFormat24h={settings.timeFormat24h}
 							toggleTimeFormat24h={settings.toggleTimeFormat24h}
 							showUpdateIndicator={settings.showUpdateIndicator}
@@ -123,6 +128,8 @@ function SettingsApp() {
 							handleBrightnessChange={settings.handleBrightnessChange}
 							cornersEnabled={settings.cornersEnabled}
 							toggleCorners={settings.toggleCorners}
+							cornersSize={settings.cornersSize}
+							handleCornersSizeChange={settings.handleCornersSizeChange}
 							scale={settings.scale}
 							handleScaleChange={settings.handleScaleChange}
 						/>

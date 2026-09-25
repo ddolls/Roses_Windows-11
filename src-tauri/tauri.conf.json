@@ -1,19 +1,19 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "bloom",
-	"version": "3.8.7",
-	"identifier": "com.sehaz.bloom",
+	"productName": "Roses",
+	"version": "1.0.0",
+	"identifier": "com.montana.roses",
 	"build": {
-		"beforeDevCommand": "bun run dev",
+		"beforeDevCommand": "npm run dev",
 		"devUrl": "http://localhost:1420",
-		"beforeBuildCommand": "bun run build",
+		"beforeBuildCommand": "npm run build",
 		"frontendDist": "../dist"
 	},
 	"app": {
 		"windows": [
 			{
 				"label": "main",
-				"title": "bloom",
+				"title": "Roses",
 				"width": 1920,
 				"height": 420,
 				"x": 0,
@@ -29,12 +29,12 @@
 				"focus": false,
 				"skipTaskbar": true,
 				"shadow": false,
-				"visible": false,
+				"visible": true,
 				"dragDropEnabled": false
 			},
 			{
 				"label": "settings",
-				"title": "Settings",
+				"title": "Roses Settings",
 				"url": "settings.html",
 				"width": 620,
 				"height": 480,
@@ -75,7 +75,7 @@
 			},
 			{
 				"label": "dock",
-				"title": "Bloom Dock",
+				"title": "Roses Dock",
 				"url": "dock.html",
 				"width": 1920,
 				"height": 600,
@@ -92,7 +92,7 @@
 				"focus": false,
 				"skipTaskbar": true,
 				"shadow": false,
-				"visible": false
+				"visible": true
 			}
 		],
 		"security": {
@@ -101,7 +101,7 @@
 	},
 	"bundle": {
 		"active": true,
-		"createUpdaterArtifacts": true,
+		"createUpdaterArtifacts": false,
 		"targets": "all",
 		"icon": [
 			"icons/32x32.png",
@@ -113,9 +113,9 @@
 	},
 	"plugins": {
 		"updater": {
-			"active": true,
+			"active": false,
 			"endpoints": [
-				"https://github.com/SehajveerSingh2005/bloom/releases/latest/download/latest.json"
+				"https://placeholder.roses.local/updates.json"
 			],
 			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzQTAzNTlBRUFFODRFMDUKUldRRlR1anFtaldnUThWRExWQ2ZDVmxhNGlFREFPYWZoV1BWbGdQNUxxdHpnbzZPbGh4SWxVMk0K"
 		}

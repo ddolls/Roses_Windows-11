@@ -361,17 +361,14 @@ unsafe extern "system" fn window_change_event_proc(
         }
     }
 
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongW, GetWindowThreadProcessId, IsWindow, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow};
 
     if !IsWindow(Some(hwnd)).as_bool() {
         return;
     }
 
-    // Skip tool windows (docks, trays, etc.)
-    let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-    if (ex_style & WS_EX_TOOLWINDOW.0) != 0 {
+    // Skip tool windows and context menus (docks, trays, context menus, popups, etc.)
+    if crate::utils::is_transient_or_menu(hwnd) {
         return;
     }
 
@@ -447,15 +444,12 @@ unsafe extern "system" fn focus_event_proc(
     }
     // Foreground moved — e.g. Snipping Tool opened/closed or got minimised.
     CAPTURE_RECHECK.store(true, Ordering::Relaxed);
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongW, IsWindow, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::IsWindow;
 
     if !IsWindow(Some(hwnd)).as_bool() {
         return;
     }
-    let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-    if (ex_style & WS_EX_TOOLWINDOW.0) != 0 {
+    if crate::utils::is_transient_or_menu(hwnd) {
         return;
     }
 
@@ -1388,13 +1382,14 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
             unsafe {
                 let now = Instant::now();
                 if now.duration_since(last_monitor_update) > Duration::from_millis(1000) {
-                    if let Some(m) = handle_visibility.primary_monitor().ok().flatten() {
+                    if let Some(m) = crate::utils::get_target_monitor(&handle_visibility) {
                         cached_scale = m.scale_factor();
                         last_monitor_update = now;
                     }
                 }
                 use windows::Win32::Graphics::Gdi::{
                     GetMonitorInfoA, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+                    MONITOR_DEFAULTTOPRIMARY,
                 };
                 let mut hwnd = GetForegroundWindow();
 
@@ -1412,7 +1407,9 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                     );
                     let class_str = std::str::from_utf8(&class_name[..len as usize]).unwrap_or("");
 
-                    let is_bloom = process_id == my_process_id || class_str.contains("Bloom");
+                    let is_bloom = process_id == my_process_id
+                        || class_str.contains("Bloom")
+                        || class_str.contains("Roses");
                     let is_visible = IsWindowVisible(hwnd).as_bool();
                     let is_iconic = IsIconic(hwnd).as_bool();
 
@@ -1431,7 +1428,9 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                         && (rect.right - rect.left) > 0
                         && (rect.bottom - rect.top) > 0;
 
-                    if is_bloom || !is_visible || is_iconic || is_cloaked || !has_valid_rect {
+                    let is_transient = crate::utils::is_transient_or_menu(hwnd);
+
+                    if is_bloom || !is_visible || is_iconic || is_cloaked || !has_valid_rect || is_transient {
                         hwnd = windows::Win32::UI::WindowsAndMessaging::GetWindow(
                             hwnd,
                             windows::Win32::UI::WindowsAndMessaging::GW_HWNDNEXT,
@@ -1516,82 +1515,103 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
 
                                 if GetMonitorInfoA(h_monitor, &mut mi).as_bool() {
                                     let screen_rect = mi.rcMonitor;
-                                    let is_maximized =
-                                        IsZoomed(hwnd).as_bool() || (style & WS_MAXIMIZE.0) != 0;
-                                    let is_maximized_standard =
-                                        is_maximized && (style & WS_CAPTION.0) != 0;
+                                    let is_primary = (mi.dwFlags & 1) != 0;
 
-                                    let mut is_client_fullscreen = false;
-                                    let mut client_rect = RECT::default();
-                                    if GetClientRect(hwnd, &mut client_rect).is_ok() {
-                                        let mut top_left = POINT {
-                                            x: client_rect.left,
-                                            y: client_rect.top,
-                                        };
-                                        let mut bottom_right = POINT {
-                                            x: client_rect.right,
-                                            y: client_rect.bottom,
-                                        };
-                                        let _ = ClientToScreen(hwnd, &mut top_left);
-                                        let _ = ClientToScreen(hwnd, &mut bottom_right);
+                                    let dock_hwnd = handle_visibility
+                                        .get_webview_window("dock")
+                                        .and_then(|w| w.hwnd().ok());
+                                    let dock_monitor = dock_hwnd
+                                        .map(|h| MonitorFromWindow(h, MONITOR_DEFAULTTOPRIMARY));
 
-                                        is_client_fullscreen = top_left.x <= screen_rect.left
-                                            && top_left.y <= screen_rect.top
-                                            && bottom_right.x >= screen_rect.right
-                                            && bottom_right.y >= screen_rect.bottom;
-                                    }
+                                    let is_dock_monitor = match dock_monitor {
+                                        Some(dm) => dm == h_monitor,
+                                        None => is_primary,
+                                    };
 
-                                    let is_matches_screen = rect.left <= screen_rect.left
-                                        && rect.top <= screen_rect.top
-                                        && rect.right >= screen_rect.right
-                                        && rect.bottom >= screen_rect.bottom;
-
-                                    // Truly fullscreen means client covers screen, OR window matches screen but is not just a standard maximized window
-                                    current_is_fs = (is_client_fullscreen || is_matches_screen)
-                                        && !is_maximized_standard;
-
-                                    if current_is_fs || is_maximized {
-                                        should_overlap = true;
-                                        should_notch_overlap = true;
-                                        // Standard maximized windows leave the dock's
-                                        // reserved strip empty on both sides, so the dock
-                                        // can stretch to a full taskbar. True fullscreen
-                                        // windows cover the screen and should not.
-                                        should_maximized = is_maximized && !current_is_fs;
-                                    } else {
+                                    if !is_dock_monitor {
+                                        // The focused window is on a secondary monitor (e.g. Monitor 2).
+                                        // It does not overlap the Dock or Notch on Monitor 1.
                                         should_overlap = false;
-                                        if let Ok(dock_rect_lock) = DOCK_RECT.lock() {
-                                            if let Some(dr) = *dock_rect_lock {
-                                                let scale = cached_scale;
-                                                let d_left = (dr.x as f64 * scale) as i32;
-                                                let d_right =
-                                                    d_left + (dr.width as f64 * scale) as i32;
-                                                let res_h = (56.0 * scale) as i32;
-                                                let trigger_y = screen_rect.bottom - res_h;
+                                        should_notch_overlap = false;
+                                        current_is_fs = false;
+                                    } else {
+                                        let is_maximized =
+                                            IsZoomed(hwnd).as_bool() || (style & WS_MAXIMIZE.0) != 0;
+                                        let is_maximized_standard =
+                                            is_maximized && (style & WS_CAPTION.0) != 0;
 
-                                                if rect.left < d_right - 4
-                                                    && rect.right > d_left + 4
-                                                    && rect.bottom > trigger_y + 4
-                                                {
-                                                    should_overlap = true;
-                                                }
-                                            }
+                                        let mut is_client_fullscreen = false;
+                                        let mut client_rect = RECT::default();
+                                        if GetClientRect(hwnd, &mut client_rect).is_ok() {
+                                            let mut top_left = POINT {
+                                                x: client_rect.left,
+                                                y: client_rect.top,
+                                            };
+                                            let mut bottom_right = POINT {
+                                                x: client_rect.right,
+                                                y: client_rect.bottom,
+                                            };
+                                            let _ = ClientToScreen(hwnd, &mut top_left);
+                                            let _ = ClientToScreen(hwnd, &mut bottom_right);
+
+                                            is_client_fullscreen = top_left.x <= screen_rect.left
+                                                && top_left.y <= screen_rect.top
+                                                && bottom_right.x >= screen_rect.right
+                                                && bottom_right.y >= screen_rect.bottom;
                                         }
 
-                                        if let Ok(notch_rect_lock) = NOTCH_RECT.lock() {
-                                            if let Some(nr) = *notch_rect_lock {
-                                                let scale = cached_scale;
-                                                let n_left = (nr.x as f64 * scale) as i32;
-                                                let n_right =
-                                                    n_left + (nr.width as f64 * scale) as i32;
-                                                let res_h = (36.0 * scale) as i32;
-                                                let trigger_y = screen_rect.top + res_h;
+                                        let is_matches_screen = rect.left <= screen_rect.left
+                                            && rect.top <= screen_rect.top
+                                            && rect.right >= screen_rect.right
+                                            && rect.bottom >= screen_rect.bottom;
 
-                                                if rect.left < n_right - 4
-                                                    && rect.right > n_left + 4
-                                                    && rect.top < trigger_y - 4
-                                                {
-                                                    should_notch_overlap = true;
+                                        // Truly fullscreen means client covers screen, OR window matches screen but is not just a standard maximized window
+                                        current_is_fs = (is_client_fullscreen || is_matches_screen)
+                                            && !is_maximized_standard;
+
+                                        if current_is_fs || is_maximized {
+                                            should_overlap = true;
+                                            should_notch_overlap = true;
+                                            // Standard maximized windows leave the dock's
+                                            // reserved strip empty on both sides, so the dock
+                                            // can stretch to a full taskbar. True fullscreen
+                                            // windows cover the screen and should not.
+                                            should_maximized = is_maximized && !current_is_fs;
+                                        } else {
+                                            should_overlap = false;
+                                            if let Ok(dock_rect_lock) = DOCK_RECT.lock() {
+                                                if let Some(dr) = *dock_rect_lock {
+                                                    let scale = cached_scale;
+                                                    let d_left = (dr.x as f64 * scale) as i32;
+                                                    let d_right =
+                                                        d_left + (dr.width as f64 * scale) as i32;
+                                                    let res_h = (56.0 * scale) as i32;
+                                                    let trigger_y = screen_rect.bottom - res_h;
+
+                                                    if rect.left < d_right - 4
+                                                        && rect.right > d_left + 4
+                                                        && rect.bottom > trigger_y + 4
+                                                    {
+                                                        should_overlap = true;
+                                                    }
+                                                }
+                                            }
+
+                                            if let Ok(notch_rect_lock) = NOTCH_RECT.lock() {
+                                                if let Some(nr) = *notch_rect_lock {
+                                                    let scale = cached_scale;
+                                                    let n_left = (nr.x as f64 * scale) as i32;
+                                                    let n_right =
+                                                        n_left + (nr.width as f64 * scale) as i32;
+                                                    let res_h = (36.0 * scale) as i32;
+                                                    let trigger_y = screen_rect.top + res_h;
+
+                                                    if rect.left < n_right - 4
+                                                        && rect.right > n_left + 4
+                                                        && rect.top < trigger_y - 4
+                                                    {
+                                                        should_notch_overlap = true;
+                                                    }
                                                 }
                                             }
                                         }
@@ -1918,6 +1938,10 @@ static CAPTURE_UI_ACTIVE: AtomicBool = AtomicBool::new(false);
 static CAPTURE_RECHECK: AtomicBool = AtomicBool::new(true);
 static CAPTURE_LAST_SCAN_MS: AtomicI64 = AtomicI64::new(0);
 
+pub fn reset_mouse_hook_monitor_cache() {
+    MH_LAST_MONITOR_UPDATE_MS.store(0, Ordering::Relaxed);
+}
+
 fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2080,7 +2104,7 @@ unsafe extern "system" fn mouse_hook_proc(
 
             // Refresh cached monitor info every 1s
             if now - MH_LAST_MONITOR_UPDATE_MS.load(Ordering::Relaxed) > 1000 {
-                if let Ok(Some(monitor)) = app_handle.primary_monitor() {
+                if let Some(monitor) = crate::utils::get_target_monitor(&app_handle) {
                     let pos = *monitor.position();
                     let size = *monitor.size();
                     *MH_CACHED_MON_POS.lock().unwrap() = Some((pos.x, pos.y));
@@ -2400,7 +2424,7 @@ unsafe extern "system" fn mouse_hook_proc(
                         MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
                     }
                 } else {
-                    let over_left = if let Ok(Some(m)) = ov_win.primary_monitor() {
+                    let over_left = if let Some(m) = crate::utils::get_target_monitor(ov_win.app_handle()) {
                         let ms = m.size();
                         let mp = m.position();
                         let sc = m.scale_factor();
@@ -2416,7 +2440,7 @@ unsafe extern "system" fn mouse_hook_proc(
                         false
                     };
 
-                    let over_right = if let Ok(Some(m)) = ov_win.primary_monitor() {
+                    let over_right = if let Some(m) = crate::utils::get_target_monitor(ov_win.app_handle()) {
                         let ms = m.size();
                         let mp = m.position();
                         let sc = m.scale_factor();
@@ -2709,9 +2733,9 @@ pub fn sync_overlays(app: &AppHandle) {
         return;
     }
     // Full-screen overlay — notches render at left/right edges via CSS
-    // The window covers the entire primary monitor so it never needs repositioning
+    // The window covers the entire target monitor so it never needs repositioning
     if let Some(ov_win) = app.get_webview_window("overlay") {
-        if let Ok(Some(monitor)) = ov_win.primary_monitor() {
+        if let Some(monitor) = crate::utils::get_target_monitor(ov_win.app_handle()) {
             let size = monitor.size();
             let pos = monitor.position();
             let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
@@ -2724,7 +2748,7 @@ pub fn sync_overlays(app: &AppHandle) {
 }
 
 pub fn register_appbar(window: tauri::WebviewWindow) {
-    if let Ok(Some(monitor)) = window.app_handle().primary_monitor() {
+    if let Some(monitor) = crate::utils::get_target_monitor(window.app_handle()) {
         let m_size = monitor.size();
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
@@ -2815,7 +2839,7 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
         tauri::async_runtime::spawn(async move {
             for _ in 0..10 {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                if let Some(_monitor) = crate::utils::get_target_monitor(w.app_handle()) {
                     register_appbar(w);
                     break;
                 }
@@ -2829,7 +2853,7 @@ pub fn register_dock_appbar(window: tauri::WebviewWindow) {
 }
 
 fn register_dock_appbar_inner(window: tauri::WebviewWindow, attempt: i32) {
-    if let Ok(Some(monitor)) = window.app_handle().primary_monitor() {
+    if let Some(monitor) = crate::utils::get_target_monitor(window.app_handle()) {
         let m_size = monitor.size();
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
@@ -2937,7 +2961,7 @@ fn register_dock_appbar_inner(window: tauri::WebviewWindow, attempt: i32) {
         tauri::async_runtime::spawn(async move {
             for _ in 0..10 {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                if let Some(_monitor) = crate::utils::get_target_monitor(w.app_handle()) {
                     register_dock_appbar(w);
                     break;
                 }
@@ -3009,12 +3033,24 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
             }
 
             // Filter out system containers and background stuff
-            if title == "Program Manager" || title == "Bloom" || title == "Bloom Dock" {
+            if title == "Program Manager"
+                || title == "Bloom"
+                || title == "Bloom Dock"
+                || title == "Roses"
+                || title == "Roses Dock"
+                || title == "Overlay"
+                || title == "Roses Settings"
+            {
                 return true.into();
             }
 
             let mut process_id = 0u32;
             GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+
+            // Completely filter out our own process (Roses) so it never appears in its own dock
+            if process_id == std::process::id() {
+                return true.into();
+            }
 
             if let Ok(process_handle) =
                 OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
@@ -3048,8 +3084,9 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                         || window_class == "ExploreWClass"
                         || (window_class == "#32770" && dialog_has_tab_control(hwnd));
 
-                    // Filter out Bloom itself (except the Settings window) and some common background processes
-                    if (lowercase_path.contains("bloom.exe") && title != "Settings")
+                    // Filter out Roses/Bloom itself and some common background processes
+                    if lowercase_path.contains("roses.exe")
+                        || lowercase_path.contains("bloom.exe")
                         || lowercase_path.contains("conhost.exe")
                         || (lowercase_path.contains("explorer.exe") && !is_explorer_window)
                         || lowercase_path.contains("shellexperiencehost.exe")
@@ -3228,7 +3265,7 @@ fn reposition_autohide_dock(app_handle: &AppHandle, dock_win: tauri::WebviewWind
             if ph <= 10 {
                 continue;
             }
-            let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+            let monitor_info = crate::utils::get_target_monitor(dock_clone.app_handle()).map(|m| {
                 let s = m.size();
                 let p = m.position();
                 (s.width as i32, s.height as i32, p.x, p.y)

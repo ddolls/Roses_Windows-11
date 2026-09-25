@@ -14,6 +14,8 @@ interface AppearanceTabProps {
 	handleBrightnessChange: (val: number) => void;
 	cornersEnabled: boolean;
 	toggleCorners: () => void;
+	cornersSize: number;
+	handleCornersSizeChange: (val: number) => void;
 	scale: number;
 	handleScaleChange: (val: number) => void;
 }
@@ -31,6 +33,8 @@ export function AppearanceTab({
 	handleBrightnessChange,
 	cornersEnabled,
 	toggleCorners,
+	cornersSize,
+	handleCornersSizeChange,
 	scale,
 	handleScaleChange
 }: AppearanceTabProps) {
@@ -129,12 +133,35 @@ export function AppearanceTab({
 
 			<div className="setting-group-label">Display</div>
 			<div className="setting-group">
-				<SettingRow icon={Square} label="Screen Corners" desc="Rounded top edges">
+				<SettingRow
+					icon={Square}
+					label="Screen Corners"
+					desc="Rounded top edges"
+					divider={cornersEnabled}
+				>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={cornersEnabled} onChange={toggleCorners} />
 						<span className="slider"></span>
 					</label>
 				</SettingRow>
+
+				{cornersEnabled && (
+					<SettingRow
+						icon={Maximize2}
+						label="Corner Size"
+						desc={`Adjust screen corner radius (${Math.round(cornersSize)}px)`}
+					>
+						<input
+							type="range"
+							min="16"
+							max="80"
+							step="2"
+							value={cornersSize}
+							onChange={(e) => handleCornersSizeChange(parseFloat(e.target.value))}
+							className="settings-slider"
+						/>
+					</SettingRow>
+				)}
 
 				<SettingRow
 					icon={Maximize2}

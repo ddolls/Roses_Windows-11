@@ -1,9 +1,15 @@
-import { Power, Download, Clock, BatteryWarning, RefreshCw, LogOut } from "lucide-react";
+import { Power, Zap, Download, Clock, BatteryWarning, RefreshCw, LogOut, Monitor } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import type { MonitorOption } from "./types";
 
 interface GeneralTabProps {
 	autostart: boolean;
 	toggleAutostart: () => void;
+	highPriorityStartup?: boolean;
+	toggleHighPriorityStartup?: () => void;
+	availableMonitors?: MonitorOption[];
+	targetMonitor?: string;
+	handleTargetMonitorChange?: (id: string) => void;
 	timeFormat24h: boolean;
 	toggleTimeFormat24h: () => void;
 	showUpdateIndicator: boolean;
@@ -17,6 +23,11 @@ interface GeneralTabProps {
 export function GeneralTab({
 	autostart,
 	toggleAutostart,
+	highPriorityStartup = false,
+	toggleHighPriorityStartup,
+	availableMonitors = [],
+	targetMonitor = "primary",
+	handleTargetMonitorChange,
 	timeFormat24h,
 	toggleTimeFormat24h,
 	showUpdateIndicator,
@@ -30,12 +41,48 @@ export function GeneralTab({
 		<>
 			<div className="setting-group-label">System</div>
 			<div className="setting-group">
-				<SettingRow icon={Power} label="Launch at Login" desc="Open Bloom automatically">
+				<SettingRow icon={Power} label="Launch at Login" desc="Open Roses automatically">
 					<label className="toggle-switch">
 						<input type="checkbox" checked={autostart} onChange={toggleAutostart} />
 						<span className="slider"></span>
 					</label>
 				</SettingRow>
+
+				<SettingRow
+					icon={Zap}
+					label="High-Priority Startup"
+					desc="Launch Roses first before other apps at logon"
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							checked={highPriorityStartup}
+							onChange={toggleHighPriorityStartup}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				{availableMonitors && availableMonitors.length > 0 && (
+					<SettingRow
+						icon={Monitor}
+						label="Target Display"
+						desc="Choose which monitor to display Roses on"
+					>
+						<select
+							className="settings-select"
+							value={targetMonitor}
+							onChange={(e) => handleTargetMonitorChange?.(e.target.value)}
+						>
+							<option value="primary">Primary Display (Auto)</option>
+							{availableMonitors.map((mon) => (
+								<option key={mon.id} value={mon.id}>
+									{mon.name}
+								</option>
+							))}
+						</select>
+					</SettingRow>
+				)}
 
 				<SettingRow
 					icon={Download}
@@ -77,14 +124,14 @@ export function GeneralTab({
 			<div className="setting-group">
 				<SettingRow
 					icon={RefreshCw}
-					label="Restart Bloom"
+					label="Restart Roses"
 					desc="Reinitialize all components"
 					action
 					onClick={restartBloom}
 				/>
 				<SettingRow
 					icon={LogOut}
-					label="Quit Bloom"
+					label="Quit Roses"
 					desc="Exit application completely"
 					action
 					danger

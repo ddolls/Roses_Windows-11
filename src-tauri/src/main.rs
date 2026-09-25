@@ -27,9 +27,22 @@ unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::System::Threading::{
+            GetCurrentProcess, SetPriorityClass, ABOVE_NORMAL_PRIORITY_CLASS,
+        };
+        let _ = SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+    }
+
+    #[cfg(target_os = "windows")]
+    crate::utils::disable_startup_delay();
+
     unsafe {
         let _ = SetConsoleCtrlHandler(Some(ctrl_handler), true);
     }
+
+    let is_autostart = std::env::args().any(|arg| arg == "--autostart" || arg == "--silent");
 
     // Single-instance enforcement
     unsafe {
@@ -38,11 +51,11 @@ fn main() {
             CreateEventW, CreateMutexW, OpenEventW, SetEvent, SYNCHRONIZATION_ACCESS_RIGHTS,
         };
 
-        let mutex_name: Vec<u16> = "BloomSingleInstance"
+        let mutex_name: Vec<u16> = "RosesSingleInstance"
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
-        let event_name: Vec<u16> = "BloomOpenSettings"
+        let event_name: Vec<u16> = "RosesOpenSettings"
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
@@ -51,14 +64,17 @@ fn main() {
         let err = GetLastError();
 
         if err.0 == 183 {
-            // Another instance is already running — signal it to open settings
-            if let Ok(h_event) = OpenEventW(
-                SYNCHRONIZATION_ACCESS_RIGHTS(0x00100002),
-                false,
-                windows::core::PCWSTR(event_name.as_ptr()),
-            ) {
-                let _ = SetEvent(h_event);
-                let _ = CloseHandle(h_event);
+            // Another instance is already running
+            // Only signal to open settings if NOT launched automatically via autostart
+            if !is_autostart {
+                if let Ok(h_event) = OpenEventW(
+                    SYNCHRONIZATION_ACCESS_RIGHTS(0x00100002),
+                    false,
+                    windows::core::PCWSTR(event_name.as_ptr()),
+                ) {
+                    let _ = SetEvent(h_event);
+                    let _ = CloseHandle(h_event);
+                }
             }
             if let Some(h) = h_mutex {
                 let _ = CloseHandle(h);
@@ -86,13 +102,15 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![]),
+            Some(vec!["--autostart"]),
         ))
         .invoke_handler(tauri::generate_handler![
             hide_native_osd,
             open_settings_window,
             open_wifi_settings,
             open_sound_settings,
+            get_audio_output_devices,
+            set_audio_output_device,
             open_notification_center,
             open_system_tray,
             set_ignore_cursor_events,
@@ -155,11 +173,16 @@ fn main() {
             import_settings,
             read_settings_from_path,
             write_settings_to_path,
+            is_high_priority_startup_enabled,
+            set_high_priority_startup,
+            get_available_monitors,
+            set_target_monitor,
             updater::check_for_updates,
             updater::install_update,
             updater::get_update_state
         ])
         .setup(|app| {
+            crate::utils::init_settings_cache(app.handle());
             init_taskbar_marker(app.handle());
             // Crash-recovery: if a previous session was force-killed while the native
             // taskbar was hidden, restore it now. Runs before the frontend re-hides it
@@ -258,6 +281,9 @@ fn main() {
 
             sync_overlays(app.handle());
 
+            let _ = window.show();
+            let _ = dock_win.show();
+
             // Initialize the overlay window — on Windows, set_position doesn't
             // take effect on a window that has never been shown. Show it once
             // to register it with the compositor, then hide immediately.
@@ -328,16 +354,16 @@ fn main() {
             {
                 use tauri::menu::{Menu, MenuItem};
                 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-                let quit_item = MenuItem::with_id(app, "quit", "Quit Bloom", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "Quit Roses", true, None::<&str>)?;
                 let restart_item =
-                    MenuItem::with_id(app, "restart", "Restart Bloom", true, None::<&str>)?;
+                    MenuItem::with_id(app, "restart", "Restart Roses", true, None::<&str>)?;
                 let settings_item =
                     MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
                 let ah = app.handle().clone();
                 TrayIconBuilder::new()
                     .icon(app.default_window_icon().unwrap().clone())
-                    .tooltip("Bloom")
+                    .tooltip("Roses")
                     .menu(&menu)
                     .on_menu_event(move |_, event| match event.id().as_ref() {
                         "quit" => {

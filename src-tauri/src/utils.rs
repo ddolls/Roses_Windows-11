@@ -402,6 +402,50 @@ pub fn is_window_fullscreen(hwnd: HWND) -> bool {
     }
 }
 
+/// True if the window is a temporary popup, context menu, tooltip, flyout,
+/// or tool window that should not be treated as a main application window for
+/// overlap/focus tracking.
+pub fn is_transient_or_menu(hwnd: HWND) -> bool {
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetClassNameA, GetWindow, GetWindowLongW, GWL_EXSTYLE, GWL_STYLE, GW_OWNER,
+            WS_CAPTION, WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
+        };
+
+        let mut class_name = [0u8; 256];
+        let len = GetClassNameA(hwnd, &mut class_name);
+        let class_str = std::str::from_utf8(&class_name[..len as usize]).unwrap_or("");
+
+        if class_str == "#32768"
+            || class_str == "Xaml_WindowedPopupClass"
+            || class_str == "Shell_Context"
+            || class_str == "Tooltips_class32"
+            || class_str == "SysShadow"
+            || class_str == "DropDown"
+            || class_str == "ComboLBox"
+            || class_str.starts_with("PopupHost")
+            || class_str == "Microsoft.UI.Content.DesktopChildSiteBridge"
+        {
+            return true;
+        }
+
+        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        if (ex_style & WS_EX_TOOLWINDOW.0) != 0 {
+            return true;
+        }
+
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        if (style & WS_POPUP.0) != 0
+            && (style & (WS_CAPTION.0 | WS_THICKFRAME.0)) == 0
+            && !GetWindow(hwnd, GW_OWNER).unwrap_or_default().is_invalid()
+        {
+            return true;
+        }
+
+        false
+    }
+}
+
 /// Resolves a bare executable name (e.g. `notepad.exe`, `msedge`, `wt.exe`) to a
 /// full path, using the same mechanisms Windows uses: the registry `App Paths`
 /// registration, then the standard executable search path, then a few well-known
@@ -672,8 +716,10 @@ pub fn init_settings_cache(app: &tauri::AppHandle) {
                 std::collections::HashMap<String, serde_json::Value>,
             >(&content)
             {
-                if let Ok(mut cache) = SETTINGS_CACHE.get().unwrap().lock() {
-                    *cache = settings;
+                if let Some(cell) = SETTINGS_CACHE.get() {
+                    if let Ok(mut cache) = cell.lock() {
+                        *cache = settings;
+                    }
                 }
             }
         }
@@ -682,8 +728,11 @@ pub fn init_settings_cache(app: &tauri::AppHandle) {
 
 /// Replace the entire settings cache (used by the file watcher on external changes).
 pub fn replace_settings_cache(new_settings: std::collections::HashMap<String, serde_json::Value>) {
-    if let Ok(mut cache) = crate::state::SETTINGS_CACHE.get().unwrap().lock() {
-        *cache = new_settings;
+    let _ = crate::state::SETTINGS_CACHE.set(std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Some(cell) = crate::state::SETTINGS_CACHE.get() {
+        if let Ok(mut cache) = cell.lock() {
+            *cache = new_settings;
+        }
     }
 }
 
@@ -697,7 +746,50 @@ pub fn get_bloom_scale(_app: &tauri::AppHandle) -> f64 {
 pub fn get_setting_str(_app: &tauri::AppHandle, key: &str) -> Option<String> {
     let cache = crate::state::SETTINGS_CACHE.get()?;
     let guard = cache.lock().ok()?;
-    guard.get(key)?.as_str().map(|s| s.to_string())
+    if let Some(val) = guard.get(key) {
+        if let Some(s) = val.as_str() {
+            return Some(s.to_string());
+        }
+    }
+    // Check alternate prefix (roses- <-> bloom-)
+    let alt_key = if let Some(stripped) = key.strip_prefix("bloom-") {
+        Some(format!("roses-{}", stripped))
+    } else if let Some(stripped) = key.strip_prefix("roses-") {
+        Some(format!("bloom-{}", stripped))
+    } else {
+        None
+    };
+    if let Some(alt) = alt_key {
+        if let Some(val) = guard.get(&alt) {
+            return val.as_str().map(|s| s.to_string());
+        }
+    }
+    None
+}
+
+/// Returns the user-selected monitor, or falls back to primary_monitor().
+pub fn get_target_monitor(app: &tauri::AppHandle) -> Option<tauri::Monitor> {
+    if let Some(target) = get_setting_str(app, "roses-target-monitor") {
+        if target != "primary" && !target.is_empty() {
+            if let Ok(monitors) = app.available_monitors() {
+                // 1. Try matching by device/monitor name (e.g. "\\\\.\\DISPLAY1")
+                for m in &monitors {
+                    if let Some(name) = m.name() {
+                        if name == target.as_str() {
+                            return Some(m.clone());
+                        }
+                    }
+                }
+                // 2. Try matching by index ("0", "1", etc.)
+                if let Ok(idx) = target.parse::<usize>() {
+                    if let Some(m) = monitors.get(idx) {
+                        return Some(m.clone());
+                    }
+                }
+            }
+        }
+    }
+    app.primary_monitor().ok().flatten()
 }
 
 /// Re-assert HWND_TOPMOST without activating the window.
@@ -871,6 +963,57 @@ pub fn capture_hwnd_to_base64(hwnd: HWND, max_width: u32, max_height: u32) -> Op
         ReleaseDC(None, hdc_screen);
 
         result
+    }
+}
+
+/// Disables the default Windows 5-10 second startup delay for user startup apps.
+pub fn disable_startup_delay() {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::System::Registry::{
+            RegCreateKeyExW, RegSetValueExW, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_DWORD,
+            REG_OPTION_NON_VOLATILE,
+        };
+        use windows::core::PCWSTR;
+
+        let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Serialize"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let value_name: Vec<u16> = "StartupDelayInMSec"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+
+        unsafe {
+            let mut hkey = windows::Win32::System::Registry::HKEY::default();
+            if RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey.as_ptr()),
+                Some(0),
+                None,
+                REG_OPTION_NON_VOLATILE,
+                KEY_SET_VALUE,
+                None,
+                &mut hkey,
+                None,
+            )
+            .is_ok()
+            {
+                let delay: u32 = 0;
+                let _ = RegSetValueExW(
+                    hkey,
+                    PCWSTR(value_name.as_ptr()),
+                    Some(0),
+                    REG_DWORD,
+                    Some(std::slice::from_raw_parts(
+                        &delay as *const u32 as *const u8,
+                        std::mem::size_of::<u32>(),
+                    )),
+                );
+                let _ = windows::Win32::System::Registry::RegCloseKey(hkey);
+            }
+        }
     }
 }
 

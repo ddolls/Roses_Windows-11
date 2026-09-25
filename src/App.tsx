@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
-import type { UpdateCheckResult } from "./updater";
 import "./App.css";
 import { initTheme } from "./theme";
 import {
@@ -15,7 +14,8 @@ import {
 	VolumeLowIcon,
 	VolumeHighIcon,
 	MusicNoteIcon,
-	HeadphonesIcon
+	HeadphonesIcon,
+	SpeakerIcon
 } from "./icons";
 import { CompactMediaPlayer } from "./CompactMediaPlayer";
 import { useWeather } from "./hooks/useWeather";
@@ -446,7 +446,6 @@ function App() {
 
 	const [eventPeek, setEventPeek] = useState(false);
 	const eventPeekTimeoutRef = useRef<any>(null);
-	const updatePulseTimerRef = useRef<any>(null);
 	const triggerEventPeek = useCallback((duration = 3000) => {
 		setEventPeek(true);
 		if (eventPeekTimeoutRef.current) clearTimeout(eventPeekTimeoutRef.current);
@@ -506,8 +505,12 @@ function App() {
 	const [volume, setVolume] = useState(0.5);
 	const [wifiEnabled, setWifiEnabled] = useState(true);
 	const [bluetoothEnabled, setBluetoothEnabled] = useState(true);
-	const [batterySaverEnabled, setBatterySaverEnabled] = useState(false);
 	const [currentBrightness, setCurrentBrightness] = useState(50);
+	const [audioDevices, setAudioDevices] = useState<
+		Array<{ id: string; name: string; is_default: boolean }>
+	>([]);
+	const [showAudioDevicePopup, setShowAudioDevicePopup] = useState(false);
+	const [loadingAudioDevices, setLoadingAudioDevices] = useState(false);
 
 	// System metrics for status widgets
 	const [cpuUsage, setCpuUsage] = useState(0);
@@ -525,45 +528,16 @@ function App() {
 		setWindowLabel(getCurrentWebviewWindow().label);
 	}, []);
 
-	// Update state
+	// Update state - decoupled from Bloom
 	const [updateAvailable, setUpdateAvailable] = useState(false);
-	const [showUpdateIndicator, setShowUpdateIndicator] = useState(
-		() => localStorage.getItem("bloom-show-update-indicator") !== "false"
-	);
+	const [showUpdateIndicator, setShowUpdateIndicator] = useState(false);
 	const [showUpdatePulse, setShowUpdatePulse] = useState(false);
 
 	useEffect(() => {
-		if (windowLabel !== "main") return;
-
-		let unlisten: (() => void) | undefined;
-		let disposed = false;
-
-		listen<UpdateCheckResult>("update-available", (event) => {
-			if (!event.payload.available) return;
-			setUpdateAvailable(true);
-			setShowUpdatePulse(true);
-			if (notchMode === "peek") triggerEventPeek(6000);
-			if (updatePulseTimerRef.current) clearTimeout(updatePulseTimerRef.current);
-			updatePulseTimerRef.current = setTimeout(() => {
-				setShowUpdatePulse(false);
-			}, 6000);
-		}).then((fn) => {
-			if (disposed) fn();
-			else unlisten = fn;
-		});
-
-		invoke<UpdateCheckResult>("get_update_state")
-			.then((state) => {
-				if (state.available) setUpdateAvailable(true);
-			})
-			.catch((e) => console.error("Failed to read update state:", e));
-
-		return () => {
-			disposed = true;
-			unlisten?.();
-			if (updatePulseTimerRef.current) clearTimeout(updatePulseTimerRef.current);
-		};
-	}, [windowLabel, notchMode, triggerEventPeek]);
+		// Update check disabled for Roses fork
+		setUpdateAvailable(false);
+		setShowUpdatePulse(false);
+	}, []);
 
 	const [isVisible, setIsVisible] = useState(true);
 	const [isImpacted, setIsImpacted] = useState(false);
@@ -762,6 +736,10 @@ function App() {
 	const [settingsCornersEnabled, setSettingsCornersEnabled] = useState(
 		() => localStorage.getItem("bloom-corners-enabled") === "true"
 	);
+	const [settingsCornersSize, setSettingsCornersSize] = useState<number>(() => {
+		const saved = localStorage.getItem("bloom-corners-size");
+		return saved ? parseFloat(saved) : 38;
+	});
 	const [mediaLayout, setMediaLayout] = useState<"classic" | "compact">(
 		() => (localStorage.getItem("bloom-media-layout") as "classic" | "compact") || "classic"
 	);
@@ -803,6 +781,8 @@ function App() {
 					getVal("bloom-media-compact-glow-enabled", "true") !== "false"
 				);
 				setSettingsCornersEnabled(getVal("bloom-corners-enabled", "false") === "true");
+				const cSize = getVal("bloom-corners-size", "38");
+				if (cSize) setSettingsCornersSize(parseFloat(cSize));
 				setTimeFormat24h(getVal("bloom-time-format-24h") === "true");
 
 				const thresholdStr = getVal("bloom-low-battery-threshold", "20");
@@ -939,6 +919,7 @@ function App() {
 			"bloom-media-compact-glow-enabled": setSettingsCompactGlowEnabled,
 			"bloom-media-layout": setMediaLayout,
 			"bloom-corners-enabled": setSettingsCornersEnabled,
+			"bloom-corners-size": (v) => setSettingsCornersSize(Number(v) || 38),
 			"bloom-scale": setScale,
 			"bloom-low-battery-threshold": setLowBatteryThreshold,
 			"bloom-dock-enabled": setDockEnabled,
@@ -1374,23 +1355,12 @@ function App() {
 		invoke<boolean>("get_bluetooth_state")
 			.then(setBluetoothEnabled)
 			.catch(() => {});
-		invoke<boolean>("get_battery_saver_state")
-			.then(setBatterySaverEnabled)
-			.catch(() => {});
 		invoke<number>("get_volume")
 			.then(setVolume)
 			.catch(() => {});
 		invoke<number>("get_brightness")
 			.then(setCurrentBrightness)
 			.catch(() => {});
-
-		// Poll battery saver state every 5s (since we can't listen for changes)
-		const interval = setInterval(() => {
-			invoke<boolean>("get_battery_saver_state")
-				.then(setBatterySaverEnabled)
-				.catch(() => {});
-		}, 5000);
-		return () => clearInterval(interval);
 	}, []);
 
 	// Poll system metrics for status widgets
@@ -1570,12 +1540,42 @@ function App() {
 		}
 	}, [bluetoothEnabled]);
 
-	// Battery Saver - opens settings (no public API to toggle without admin)
-	const openBatterySaverSettings = useCallback(async () => {
+	const toggleAudioDevicePopup = useCallback(async (e: React.MouseEvent) => {
+		e.stopPropagation();
+		if (showAudioDevicePopup) {
+			setShowAudioDevicePopup(false);
+			return;
+		}
+		setShowAudioDevicePopup(true);
+		setLoadingAudioDevices(true);
 		try {
-			await invoke("open_battery_saver_settings");
-		} catch (e) {
-			console.error("Failed to open Battery Saver settings:", e);
+			const devices = await invoke<
+				Array<{ id: string; name: string; is_default: boolean }>
+			>("get_audio_output_devices");
+			setAudioDevices(devices);
+		} catch (err) {
+			console.error("Failed to get audio devices:", err);
+		} finally {
+			setLoadingAudioDevices(false);
+		}
+	}, [showAudioDevicePopup]);
+
+	const selectAudioDevice = useCallback(async (deviceId: string) => {
+		try {
+			// Optimistically set checkmark to clicked device
+			setAudioDevices((prev) =>
+				prev.map((d) => ({
+					...d,
+					is_default: d.id === deviceId,
+				}))
+			);
+			await invoke("set_audio_output_device", { deviceId, device_id: deviceId });
+			const devices = await invoke<
+				Array<{ id: string; name: string; is_default: boolean }>
+			>("get_audio_output_devices");
+			setAudioDevices(devices);
+		} catch (err) {
+			console.error("Failed to set audio device:", err);
 		}
 	}, []);
 
@@ -1777,7 +1777,7 @@ function App() {
 		}
 		// Sized to the calendar's week-row count plus the timer's fixed content.
 		if (bloomMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
-		if (bloomMode === "command-center") return isHovered ? 230 : 36;
+		if (bloomMode === "command-center") return isHovered ? (showAudioDevicePopup ? 350 : 230) : 36;
 		if (bloomMode === "status") return 36;
 		if (isMusicMode && isHovered) {
 			const hasProgressBar = (mediaInfo.duration_ms ?? 0) > 0;
@@ -1799,6 +1799,12 @@ function App() {
 		}
 	}, [isHovered, mediaLayout, bloomMode]);
 
+	useEffect(() => {
+		if (!isHovered || bloomMode !== "command-center") {
+			setShowAudioDevicePopup(false);
+		}
+	}, [isHovered, bloomMode]);
+
 	return (
 		<div className="screen" style={{ overflow: "hidden" }}>
 			{/* Screen Corners (Top) */}
@@ -1807,12 +1813,20 @@ function App() {
 					<>
 						<motion.div
 							className="screen-corner top-left"
+							style={{
+								transform: `scale(${settingsCornersSize / 38})`,
+								transformOrigin: "top left"
+							}}
 							initial={{ opacity: 0 }}
 							animate={{ opacity: 1, filter: "blur(0px)" }}
 							exit={{ opacity: 0, filter: "blur(10px)" }}
 						/>
 						<motion.div
 							className="screen-corner top-right"
+							style={{
+								transform: `scale(${settingsCornersSize / 38})`,
+								transformOrigin: "top right"
+							}}
 							initial={{ opacity: 0 }}
 							animate={{ opacity: 1, filter: "blur(0px)" }}
 							exit={{ opacity: 0, filter: "blur(10px)" }}
@@ -1865,7 +1879,7 @@ function App() {
 					}}
 					onHoverStart={() => {
 						setIsHovered(true);
-						setBloomMode(mediaInfo.has_media && isPlaying ? "music" : "status");
+						setBloomMode(mediaInfo.has_media && isPlaying ? "music" : "command-center");
 					}}
 					onHoverEnd={() => {
 						setIsHovered(false);
@@ -2533,14 +2547,11 @@ function App() {
 													<MoonIcon />
 												</button>
 												<button
-													className={`cc-circular-btn ${batterySaverEnabled ? "active" : ""}`}
-													onClick={(e) => {
-														e.stopPropagation();
-														openBatterySaverSettings();
-													}}
-													title={`Energy Saver: ${batterySaverEnabled ? "On" : "Off"} — Click to open Settings`}
+													className={`cc-circular-btn ${showAudioDevicePopup ? "active" : ""}`}
+													onClick={toggleAudioDevicePopup}
+													title="Sound Output Devices — Click to select device"
 												>
-													<BatterySaverIcon />
+													<SpeakerIcon size={18} />
 												</button>
 												<button
 													className="cc-circular-btn"
@@ -2568,7 +2579,7 @@ function App() {
 														e.stopPropagation();
 														openSettingsWindow();
 													}}
-													title="Bloom Settings"
+													title="Roses Settings"
 												>
 													<SettingsIcon />
 												</button>
@@ -2578,11 +2589,79 @@ function App() {
 														e.stopPropagation();
 														invoke("restart_bloom");
 													}}
-													title="Restart Bloom"
+													title="Restart Roses"
 												>
 													<ReloadIcon />
 												</button>
 											</div>
+
+											{/* Expandable Sound Output Devices Panel */}
+											<AnimatePresence>
+												{showAudioDevicePopup && (
+													<motion.div
+														className="sound-device-panel"
+														initial={{ opacity: 0, height: 0 }}
+														animate={{ opacity: 1, height: "auto" }}
+														exit={{ opacity: 0, height: 0 }}
+														transition={{ duration: 0.2, ease: "easeOut" }}
+														onClick={(e) => e.stopPropagation()}
+													>
+														<div className="sound-device-popup-header">
+															<span className="sound-device-popup-title">Sound Output Devices</span>
+															<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+																<button
+																	className="sound-device-settings-link"
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		invoke("open_sound_settings");
+																	}}
+																	title="Open Windows Sound Settings"
+																>
+																	Settings
+																</button>
+																<button
+																	className="sound-device-close-btn"
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		setShowAudioDevicePopup(false);
+																	}}
+																	title="Close"
+																>
+																	✕
+																</button>
+															</div>
+														</div>
+														<div className="sound-device-list">
+															{loadingAudioDevices ? (
+																<div className="sound-device-loading">Loading devices...</div>
+															) : audioDevices.length === 0 ? (
+																<div className="sound-device-loading">No output devices found</div>
+															) : (
+																audioDevices.map((dev) => (
+																	<div
+																		key={dev.id}
+																		className={`sound-device-item ${dev.is_default ? "active" : ""}`}
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			selectAudioDevice(dev.id);
+																		}}
+																	>
+																		<div className="sound-device-icon">
+																			<SpeakerIcon size={14} />
+																		</div>
+																		<span className="sound-device-name" title={dev.name}>
+																			{dev.name}
+																		</span>
+																		{dev.is_default && (
+																			<span className="sound-device-check">✓</span>
+																		)}
+																	</div>
+																))
+															)}
+														</div>
+													</motion.div>
+												)}
+											</AnimatePresence>
 
 											{/* Classic Sliders Area */}
 											<div className="cc-classic-sliders-area">
@@ -2952,25 +3031,6 @@ function ReloadIcon() {
 			strokeLinejoin="round"
 		>
 			<path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-		</svg>
-	);
-}
-
-function BatterySaverIcon() {
-	return (
-		<svg
-			width="18"
-			height="18"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="2.5"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-		>
-			<rect x="2" y="7" width="16" height="10" rx="2" />
-			<path d="M22 11v2" />
-			<path d="M6 12h4l2-3v6l-2-3H6" />
 		</svg>
 	);
 }

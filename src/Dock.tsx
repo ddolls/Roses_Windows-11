@@ -73,7 +73,7 @@ const Dock = memo(function Dock() {
 		() => localStorage.getItem("bloom-dock-preview-enabled") !== "false"
 	);
 	const [dockIconOnly, setDockIconOnly] = useState(
-		() => localStorage.getItem("bloom-dock-icon-only") === "true"
+		() => localStorage.getItem("bloom-dock-icon-only") !== "false"
 	);
 	const [dockAdaptive, setDockAdaptive] = useState(
 		() => localStorage.getItem("bloom-dock-adaptive") === "true"
@@ -242,8 +242,8 @@ const Dock = memo(function Dock() {
 			const preview = getVal("bloom-dock-preview-enabled", "true");
 			setDockPreviewEnabled(preview === "true");
 
-			const iconOnly = getVal("bloom-dock-icon-only", "false");
-			setDockIconOnly(iconOnly === "true");
+			const iconOnly = getVal("bloom-dock-icon-only", "true");
+			setDockIconOnly(iconOnly !== "false");
 
 			const adaptive = getVal("bloom-dock-adaptive", "false");
 			setDockAdaptive(adaptive === "true");
@@ -301,7 +301,20 @@ const Dock = memo(function Dock() {
 		const poll = async () => {
 			if (isDragging) return;
 			const seq = ++pollSeq;
-			const running = await invoke<AppInfo[]>("get_active_windows");
+			const rawRunning = await invoke<AppInfo[]>("get_active_windows");
+			// Filter out Roses itself so it never shows on its own dock
+			const running = rawRunning.filter((app) => {
+				const p = app.path.toLowerCase();
+				const n = app.name.toLowerCase();
+				return (
+					!p.includes("roses.exe") &&
+					!p.includes("bloom.exe") &&
+					n !== "roses" &&
+					n !== "bloom" &&
+					n !== "roses dock" &&
+					n !== "bloom dock"
+				);
+			});
 			// Ignore responses that arrive out of order: an older poll must never
 			// overwrite a newer state, which would resurrect closed apps.
 			if (seq !== pollSeq) return;
@@ -751,6 +764,12 @@ const Dock = memo(function Dock() {
 		tap: { scale: 0.95 }
 	};
 
+	const startOrbVariants = {
+		idle: { y: 0, scale: 1 },
+		hover: { y: 0, scale: 1 },
+		tap: { scale: 0.95 }
+	};
+
 	return (
 		<div className={`dock-container ${isDragging ? "dragging" : ""}`} onClick={closeMenu}>
 			<div
@@ -835,13 +854,9 @@ const Dock = memo(function Dock() {
 											setPressedApp(null);
 										}}
 									>
-										{(!dockPreviewEnabled ||
-											(dockPreviewEnabled && hoveredApp === itemKey(startItem))) && (
-											<div className="tooltip">{startItem.name}</div>
-										)}
 										<motion.div
 											className="dock-icon"
-											variants={iconVariants}
+											variants={startOrbVariants}
 											animate={
 												pressedApp === itemKey(startItem)
 													? "tap"
@@ -857,12 +872,44 @@ const Dock = memo(function Dock() {
 												handleAppClick(startItem);
 											}}
 										>
-											<img
-												src="/bloom.png"
-												alt="Bloom"
-												className="bloom-icon-img"
-												draggable={false}
-											/>
+											<motion.div
+												className="bloom-start-orb-wrapper"
+												animate={
+													hoveredApp === itemKey(startItem)
+														? {
+																scale: 1,
+																filter: [
+																	"drop-shadow(0 0 4px rgba(255, 255, 255, 0.85)) drop-shadow(0 0 10px rgba(255, 80, 120, 0.8))",
+																	"drop-shadow(0 0 8px rgba(255, 255, 255, 1)) drop-shadow(0 0 18px rgba(255, 60, 110, 0.95))",
+																	"drop-shadow(0 0 4px rgba(255, 255, 255, 0.85)) drop-shadow(0 0 10px rgba(255, 80, 120, 0.8))"
+																]
+														  }
+														: {
+																scale: 1,
+																filter: "drop-shadow(0 0 0px rgba(255, 255, 255, 0))"
+														  }
+												}
+												transition={
+													hoveredApp === itemKey(startItem)
+														? {
+																filter: { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+														  }
+														: { duration: 0.2 }
+												}
+												style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+											>
+												<svg
+													width="22"
+													height="22"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="white"
+													strokeWidth="2.2"
+													className="bloom-start-orb"
+												>
+													<circle cx="12" cy="12" r="8" />
+												</svg>
+											</motion.div>
 										</motion.div>
 									</motion.div>
 								)}
@@ -1007,6 +1054,8 @@ const Dock = memo(function Dock() {
 														const isBloomOrSettings =
 															app.name.toLowerCase() === "settings" ||
 															app.name.toLowerCase() === "bloom" ||
+															app.name.toLowerCase() === "roses" ||
+															app.path.toLowerCase().includes("roses.exe") ||
 															app.path.toLowerCase().includes("bloom.exe");
 
 														return icon ? (
@@ -1150,7 +1199,9 @@ const Dock = memo(function Dock() {
 												const isBloomOrSettings =
 													app.name.toLowerCase() === "settings" ||
 													app.name.toLowerCase() === "bloom" ||
-													app.path.toLowerCase().includes("bloom.exe");
+													app.name.toLowerCase() === "roses" ||
+													app.path.toLowerCase().includes("bloom.exe") ||
+													app.path.toLowerCase().includes("roses.exe");
 												return icon ? (
 													<img
 														src={icon}
@@ -1255,7 +1306,7 @@ const Dock = memo(function Dock() {
 								onMouseEnter={() => setActiveSubmenu("bloom")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
-								Bloom Options
+								Roses Options
 								<span className="submenu-arrow">▶</span>
 								<div className="submenu">
 									<div
@@ -1268,7 +1319,7 @@ const Dock = memo(function Dock() {
 										Open Settings
 									</div>
 									<div className="menu-item" onClick={() => invoke("restart_bloom")}>
-										Restart Bloom
+										Restart Roses
 									</div>
 									<div
 										className="menu-item"
@@ -1281,7 +1332,7 @@ const Dock = memo(function Dock() {
 									</div>
 									<div className="menu-divider" />
 									<div className="menu-item quit" onClick={() => invoke("quit_bloom")}>
-										Quit Bloom
+										Quit Roses
 									</div>
 								</div>
 							</div>
@@ -1318,7 +1369,7 @@ const Dock = memo(function Dock() {
 								onMouseEnter={() => setActiveSubmenu("bloom")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
-								Bloom Options
+								Roses Options
 								<span className="submenu-arrow">▶</span>
 								<div className="submenu">
 									<div
@@ -1331,7 +1382,7 @@ const Dock = memo(function Dock() {
 										Open Settings
 									</div>
 									<div className="menu-item" onClick={() => invoke("restart_bloom")}>
-										Restart Bloom
+										Restart Roses
 									</div>
 									<div
 										className="menu-item"
@@ -1344,7 +1395,7 @@ const Dock = memo(function Dock() {
 									</div>
 									<div className="menu-divider" />
 									<div className="menu-item quit" onClick={() => invoke("quit_bloom")}>
-										Quit Bloom
+										Quit Roses
 									</div>
 								</div>
 							</div>

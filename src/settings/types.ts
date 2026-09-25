@@ -17,3 +17,12 @@ export interface SettingRowProps {
 	onClick?: () => void;
 	children?: React.ReactNode;
 }
+
+export interface MonitorOption {
+	id: string;
+	name: string;
+	is_primary: boolean;
+	width: number;
+	height: number;
+	scale_factor: number;
+}
