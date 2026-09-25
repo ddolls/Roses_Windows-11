@@ -129,6 +129,14 @@ Licensed under [GPLv3](LICENSE).
 
 ---
 
+## Credits & Acknowledgements
+
+Roses is built upon and inspired by **[Bloom](https://github.com/SehajveerSingh2005/Bloom)**, originally created and developed by **[Sehajveer Singh](https://github.com/SehajveerSingh2005)**. Sincere gratitude and respect to the original creator and contributors for their outstanding foundation and design work.
+
+Roses is actively developed, customized, and maintained by **[Montana (ddolls)](https://github.com/ddolls)**.
+
+---
+
 <div align="center">
 
 **Your desktop is waiting.**
