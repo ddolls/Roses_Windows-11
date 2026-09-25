@@ -454,7 +454,24 @@ const Dock = memo(function Dock() {
 		}
 	};
 
+	const lastClickTimeRef = useRef<Record<string, number>>({});
+
+	const handleFocusHwnd = (hwnd: number) => {
+		const key = `hwnd-${hwnd}`;
+		const now = Date.now();
+		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 400) return;
+		lastClickTimeRef.current[key] = now;
+		invoke("focus_window", { hwnd });
+	};
+
 	const handleAppClick = async (app: AppInfo) => {
+		const key = app.hwnd ? `hwnd-${app.hwnd}` : `path-${app.path}`;
+		const now = Date.now();
+		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 400) {
+			return;
+		}
+		lastClickTimeRef.current[key] = now;
+
 		try {
 			if (app.path === "start") {
 				await invoke("open_app", { appName: "start" });
@@ -983,7 +1000,7 @@ const Dock = memo(function Dock() {
 																		<div
 																			key={prev.hwnd}
 																			className="preview-item"
-																			onClick={() => invoke("focus_window", { hwnd: prev.hwnd })}
+																			onClick={() => handleFocusHwnd(prev.hwnd)}
 																		>
 																			<img src={prev.image} alt={`Preview ${idx}`} />
 																			<div className="preview-label">{prev.title || app.name}</div>
@@ -1134,7 +1151,7 @@ const Dock = memo(function Dock() {
 																<div
 																	key={prev.hwnd}
 																	className="preview-item"
-																	onClick={() => invoke("focus_window", { hwnd: prev.hwnd })}
+																	onClick={() => handleFocusHwnd(prev.hwnd)}
 																>
 																	<img src={prev.image} alt={`Preview ${idx}`} />
 																	<div className="preview-label">{prev.title || app.name}</div>

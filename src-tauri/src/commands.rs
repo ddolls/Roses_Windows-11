@@ -779,6 +779,22 @@ fn take_maximized_state(hwnd: isize) -> bool {
     false
 }
 
+fn should_debounce_focus(raw_hwnd: isize, cooldown_ms: i64) -> bool {
+    static LAST_FOCUS: std::sync::Mutex<Option<std::collections::HashMap<isize, i64>>> =
+        std::sync::Mutex::new(None);
+    let now = crate::utils::get_now_ms();
+    if let Ok(mut guard) = LAST_FOCUS.lock() {
+        let map = guard.get_or_insert_with(std::collections::HashMap::new);
+        if let Some(last_ts) = map.get(&raw_hwnd) {
+            if now - *last_ts < cooldown_ms {
+                return true;
+            }
+        }
+        map.insert(raw_hwnd, now);
+    }
+    false
+}
+
 #[tauri::command]
 pub async fn focus_window(hwnd: isize) {
     if hwnd <= 0 {
@@ -789,7 +805,7 @@ pub async fn focus_window(hwnd: isize) {
         use windows::Win32::UI::WindowsAndMessaging::{
             GetForegroundWindow, GetWindowPlacement, GetWindowThreadProcessId, IsIconic, IsWindow,
             IsWindowVisible, IsZoomed, PostMessageW, SetForegroundWindow, ShowWindowAsync,
-            SC_MAXIMIZE, SC_MINIMIZE, SC_RESTORE, SW_MAXIMIZE, SW_RESTORE, SW_SHOW,
+            SC_MAXIMIZE, SC_RESTORE, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW,
             SW_SHOWMAXIMIZED, WINDOWPLACEMENT, WM_SYSCOMMAND,
         };
         let hwnd = HWND(hwnd as *mut _);
@@ -806,19 +822,26 @@ pub async fn focus_window(hwnd: isize) {
 
         let raw_hwnd = hwnd.0 as *mut () as isize;
 
-        // Check if the window was previously maximized or fullscreen
-        let was_tracked = take_maximized_state(raw_hwnd);
-        let mut wp = WINDOWPLACEMENT {
-            length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
-            ..Default::default()
+        // Prevent rapid duplicate clicks or animation loops from re-triggering minimize/restore
+        if should_debounce_focus(raw_hwnd, 450) {
+            return;
+        }
+
+        let get_was_maximized = |h: HWND, raw: isize| -> bool {
+            let was_tracked = take_maximized_state(raw);
+            let mut wp = WINDOWPLACEMENT {
+                length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+                ..Default::default()
+            };
+            let _ = GetWindowPlacement(h, &mut wp);
+            was_tracked
+                || (wp.flags.0 & 2) != 0 // WPF_RESTORETOMAXIMIZED
+                || wp.showCmd == SW_SHOWMAXIMIZED.0 as u32
+                || wp.showCmd == SW_MAXIMIZE.0 as u32
         };
-        let _ = GetWindowPlacement(hwnd, &mut wp);
-        let was_maximized = was_tracked
-            || (wp.flags.0 & 2) != 0 // WPF_RESTORETOMAXIMIZED
-            || wp.showCmd == SW_SHOWMAXIMIZED.0 as u32
-            || wp.showCmd == SW_MAXIMIZE.0 as u32;
 
         if !IsWindowVisible(hwnd).as_bool() {
+            let was_maximized = get_was_maximized(hwnd, raw_hwnd);
             let _ = ShowWindowAsync(hwnd, SW_SHOW);
             if was_maximized {
                 let _ = PostMessageW(
@@ -839,6 +862,7 @@ pub async fn focus_window(hwnd: isize) {
             }
             let _ = SetForegroundWindow(hwnd);
         } else if IsIconic(hwnd).as_bool() {
+            let was_maximized = get_was_maximized(hwnd, raw_hwnd);
             // Restore window preserving maximized / fullscreen state
             if was_maximized {
                 let _ = PostMessageW(
@@ -890,20 +914,23 @@ pub async fn focus_window(hwnd: isize) {
             }
 
             if should_minimize {
+                // Clear recent focus timestamp immediately so consecutive checks don't re-trigger minimize
+                if let Some(map) = crate::state::FOCUS_TIMESTAMPS.get() {
+                    if let Ok(mut guard) = map.lock() {
+                        guard.remove(&raw_hwnd);
+                    }
+                }
+
                 // Remember if this window is currently fullscreen or maximized so we can restore it accurately
                 let is_fullscreen_or_max =
                     IsZoomed(hwnd).as_bool() || crate::utils::is_window_fullscreen(hwnd);
                 record_maximized_state(raw_hwnd, is_fullscreen_or_max);
 
-                // Post SC_MINIMIZE so the target process itself handles the minimize animation/state.
-                // This prevents third-party injection hooks (e.g., Windhawk macOS minimize animation)
-                // from crashing inside the Roses process when targeting elevated/foreign apps.
-                let _ = PostMessageW(
-                    Some(hwnd),
-                    WM_SYSCOMMAND,
-                    WPARAM(SC_MINIMIZE as usize),
-                    LPARAM(0),
-                );
+                // Asynchronously minimize the window.
+                // Using ShowWindowAsync(SW_MINIMIZE) matches native taskbar behavior and avoids
+                // triggering Windhawk's DefWindowProcW deferred-minimize hook which causes repeating/looping
+                // animations on browsers like Firefox and Zen Browser.
+                let _ = ShowWindowAsync(hwnd, SW_MINIMIZE);
             } else {
                 let _ = SetForegroundWindow(hwnd);
             }
