@@ -2616,16 +2616,10 @@ pub async fn close_window(hwnd: isize) {
         return;
     }
     tauri::async_runtime::spawn_blocking(move || unsafe {
-        use windows::core::BOOL;
         use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowThreadProcessId, IsWindow, PostMessageW, SC_CLOSE, WM_CLOSE, WM_SYSCOMMAND,
+            GetWindowThreadProcessId, IsWindow, PostMessageW, WM_CLOSE,
         };
-
-        #[link(name = "user32")]
-        extern "system" {
-            fn EndTask(hwnd: HWND, fshut: BOOL, fforce: BOOL) -> BOOL;
-        }
 
         let hwnd = HWND(hwnd as *mut _);
         if !IsWindow(Some(hwnd)).as_bool() {
@@ -2639,23 +2633,10 @@ pub async fn close_window(hwnd: isize) {
             return;
         }
 
-        // 1. Try graceful EndTask (official Windows API used by Explorer taskbar and Task Manager).
-        // This handles elevated processes (like Task Manager) where standard WM_CLOSE is blocked by UIPI.
-        let end_res = EndTask(hwnd, BOOL(0), BOOL(0));
-        if end_res.as_bool() {
-            return;
-        }
-
-        // 2. Try WM_CLOSE via PostMessage
+        // Graceful window close via WM_CLOSE.
+        // Standard Windows behavior (identical to clicking the close [X] button or taskbar close).
+        // Never call EndTask here as EndTask triggers the system "This program is not responding" dialog!
         let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
-
-        // 3. Try SC_CLOSE via WM_SYSCOMMAND
-        let _ = PostMessageW(
-            Some(hwnd),
-            WM_SYSCOMMAND,
-            WPARAM(SC_CLOSE as usize),
-            LPARAM(0),
-        );
     })
     .await
     .unwrap_or_default();

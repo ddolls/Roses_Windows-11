@@ -1363,14 +1363,13 @@ const Dock = memo(function Dock() {
 											const app = contextMenu.app;
 											closeMenu();
 											if (app) {
-												const hwndsToClose =
+												const rawHwnds =
 													app.all_hwnds && app.all_hwnds.length > 0
 														? app.all_hwnds.map(([h]) => h)
 														: (app.hwnd ? [app.hwnd] : []);
+												const hwndsToClose = Array.from(new Set(rawHwnds.filter(Boolean)));
 												for (const h of hwndsToClose) {
-													if (h) {
-														await invoke("close_window", { hwnd: h }).catch(() => {});
-													}
+													await invoke("close_window", { hwnd: h }).catch(() => {});
 												}
 											}
 										}}
