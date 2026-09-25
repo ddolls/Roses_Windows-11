@@ -101,7 +101,7 @@
 	},
 	"bundle": {
 		"active": true,
-		"createUpdaterArtifacts": false,
+		"createUpdaterArtifacts": true,
 		"targets": "all",
 		"icon": [
 			"icons/32x32.png",
@@ -113,11 +113,11 @@
 	},
 	"plugins": {
 		"updater": {
-			"active": false,
+			"active": true,
 			"endpoints": [
-				"https://placeholder.roses.local/updates.json"
+				"https://github.com/ddolls/Roses_Windows-11/releases/latest/download/latest.json"
 			],
-			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzQTAzNTlBRUFFODRFMDUKUldRRlR1anFtaldnUThWRExWQ2ZDVmxhNGlFREFPYWZoV1BWbGdQNUxxdHpnbzZPbGh4SWxVMk0K"
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNCOEZFMjgxMjkxMEFFREMKUldUY3JoQXBnZUtQTzgyUmc5MTFYU2ZwSUJla2dQZ0JkSER6K1BPYVpNQlhrVG9YTlVEYlNmVmMK"
 		}
 	}
 }
