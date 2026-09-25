@@ -1017,6 +1017,62 @@ pub fn disable_startup_delay() {
     }
 }
 
+/// If the high-priority Task Scheduler task (RosesStartup) is already registered,
+/// remove the HKCU\Run registry entry that the Tauri autostart plugin creates.
+/// Having both active simultaneously causes a double-launch race on boot where one
+/// instance crashes while the other tries to acquire the single-instance mutex.
+pub fn fix_duplicate_startup() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+        use windows::Win32::System::Registry::{
+            RegDeleteValueW, RegOpenKeyExW, HKEY_CURRENT_USER, KEY_SET_VALUE,
+        };
+        use windows::core::PCWSTR;
+
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        // Check if RosesStartup scheduled task exists
+        let task_exists = Command::new("schtasks")
+            .args(["/query", "/tn", "RosesStartup"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if !task_exists {
+            return;
+        }
+
+        // Task exists → remove the HKCU\Run "Roses" registry value (plugin-autostart entry)
+        unsafe {
+            let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let value_name: Vec<u16> = "Roses"
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+
+            let mut hkey = windows::Win32::System::Registry::HKEY::default();
+            if RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey.as_ptr()),
+                Some(0),
+                KEY_SET_VALUE,
+                &mut hkey,
+            )
+            .is_ok()
+            {
+                let _ = RegDeleteValueW(hkey, PCWSTR(value_name.as_ptr()));
+                let _ = windows::Win32::System::Registry::RegCloseKey(hkey);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::expand_env_vars;

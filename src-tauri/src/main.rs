@@ -38,6 +38,11 @@ fn main() {
     #[cfg(target_os = "windows")]
     crate::utils::disable_startup_delay();
 
+    // If both the Task Scheduler (RosesStartup) and HKCU\Run registry entries are active,
+    // remove the registry one — only one startup mechanism should be active at a time.
+    #[cfg(target_os = "windows")]
+    crate::utils::fix_duplicate_startup();
+
     unsafe {
         let _ = SetConsoleCtrlHandler(Some(ctrl_handler), true);
     }

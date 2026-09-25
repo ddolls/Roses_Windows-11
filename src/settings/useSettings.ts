@@ -377,6 +377,8 @@ export function useSettings() {
 	}, []);
 
 	// ── Autostart ──
+	// Only one startup mechanism should be active at a time.
+	// Enabling one automatically disables the other to prevent a double-launch race on boot.
 	const toggleAutostart = async () => {
 		try {
 			const currentlyEnabled = await isEnabled();
@@ -386,6 +388,13 @@ export function useSettings() {
 			} else {
 				await enable();
 				setAutostart(true);
+				// Disable high-priority startup — only one mechanism at a time
+				if (highPriorityStartup) {
+					try {
+						await invoke("set_high_priority_startup", { enable: false });
+						setHighPriorityStartup(false);
+					} catch {}
+				}
 			}
 		} catch (err) {}
 	};
@@ -395,6 +404,13 @@ export function useSettings() {
 		try {
 			await invoke("set_high_priority_startup", { enable: next });
 			setHighPriorityStartup(next);
+			// Disable regular autostart if enabling high-priority — only one mechanism at a time
+			if (next && autostart) {
+				try {
+					await disable();
+					setAutostart(false);
+				} catch {}
+			}
 			setTimeout(() => {
 				invoke<boolean>("is_high_priority_startup_enabled")
 					.then(setHighPriorityStartup)
