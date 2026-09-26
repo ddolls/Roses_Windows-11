@@ -1,5 +1,13 @@
 <div align="center">
 
+## Credits & Acknowledgements
+
+Roses is built upon and inspired by **[Bloom](https://github.com/SehajveerSingh2005/Bloom)**, originally created and developed by **[Sehajveer Singh](https://github.com/SehajveerSingh2005)**. Sincere gratitude and respect to the original creator and contributors for their outstanding foundation and design work.
+
+Roses is actively developed, customized, and maintained by **[Montana (ddolls)](https://github.com/ddolls)**.
+
+---
+
 <img 
   src="public/roses.png" 
   width="72"
@@ -126,14 +134,6 @@ Have an idea? Send a PR.
 Want to just say it's cool? A star goes a long way.
 
 Licensed under [GPLv3](LICENSE).
-
----
-
-## Credits & Acknowledgements
-
-Roses is built upon and inspired by **[Bloom](https://github.com/SehajveerSingh2005/Bloom)**, originally created and developed by **[Sehajveer Singh](https://github.com/SehajveerSingh2005)**. Sincere gratitude and respect to the original creator and contributors for their outstanding foundation and design work.
-
-Roses is actively developed, customized, and maintained by **[Montana (ddolls)](https://github.com/ddolls)**.
 
 ---
 
