@@ -87,6 +87,9 @@ export function useSettings() {
 		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
 		return raw === "auto-hide" ? "smart" : raw;
 	});
+	const [dockTheme, setDockTheme] = useState(() => {
+		return localStorage.getItem("bloom-dock-theme") || "default";
+	});
 	const [notchMode, setNotchMode] = useState("fixed");
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(20);
 	const [updateStatus, setUpdateStatus] = useState<
@@ -235,6 +238,7 @@ export function useSettings() {
 		"roses-target-monitor": setTargetMonitor,
 		"bloom-target-monitor": setTargetMonitor,
 		"bloom-dock-mode": setDockMode,
+		"bloom-dock-theme": setDockTheme,
 		"bloom-notch-mode": setNotchMode,
 		"bloom-dock-enabled": setDockEnabled,
 		"bloom-dock-icon-only": setDockIconOnly,
@@ -574,6 +578,11 @@ export function useSettings() {
 		saveSetting("bloom-dock-mode", newMode);
 	};
 
+	const setDockThemeValue = (newTheme: string) => {
+		setDockTheme(newTheme);
+		saveSetting("bloom-dock-theme", newTheme);
+	};
+
 	const setNotchModeValue = (newMode: string) => {
 		setNotchMode(newMode);
 		saveSetting("bloom-notch-mode", newMode);
@@ -807,6 +816,8 @@ export function useSettings() {
 		// Dock
 		dockEnabled,
 		toggleDock,
+		dockTheme,
+		setDockThemeValue,
 		dockMode,
 		setDockModeValue,
 		dockPreviewEnabled,

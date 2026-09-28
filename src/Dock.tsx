@@ -69,6 +69,11 @@ const Dock = memo(function Dock() {
 		if (raw === "auto-hide") return "smart";
 		return raw;
 	});
+	const [dockTheme, setDockTheme] = useState(() => {
+		return localStorage.getItem("bloom-dock-theme") || "default";
+	});
+	const isMacTheme = dockTheme === "macos" || dockTheme === "mac os";
+	const [bouncingApp, setBouncingApp] = useState<string | null>(null);
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(
 		() => localStorage.getItem("bloom-dock-preview-enabled") !== "false"
 	);
@@ -147,7 +152,7 @@ const Dock = memo(function Dock() {
 	// standard maximized window is in the foreground, so the reserved strip no
 	// longer looks like a cut-out around the centered pill.
 	const isAdaptive =
-		dockAdaptive && dockMode === "fixed" && isMaximized && isExpanded && !isHidden && isVisible;
+		!isMacTheme && dockAdaptive && dockMode === "fixed" && isMaximized && isExpanded && !isHidden && isVisible;
 	// Nearly full width — 24px margin per side at the visual (scaled) size.
 	// Pre-transform: visual = width * scale, so width = (viewport - 48*scale) / scale.
 	const adaptiveWidth = (viewportWidth - 48 * scale) / scale;
@@ -239,6 +244,9 @@ const Dock = memo(function Dock() {
 				setDockMode(mapped);
 			}
 
+			const dTheme = getVal("bloom-dock-theme", "default");
+			if (dTheme) setDockTheme(dTheme);
+
 			const preview = getVal("bloom-dock-preview-enabled", "true");
 			setDockPreviewEnabled(preview === "true");
 
@@ -289,6 +297,7 @@ const Dock = memo(function Dock() {
 
 	useSettingsSync({
 		"bloom-dock-mode": setDockMode,
+		"bloom-dock-theme": setDockTheme,
 		"bloom-dock-preview-enabled": setDockPreviewEnabled,
 		"bloom-dock-icon-only": setDockIconOnly,
 		"bloom-dock-adaptive": setDockAdaptive,
@@ -471,6 +480,13 @@ const Dock = memo(function Dock() {
 			return;
 		}
 		lastClickTimeRef.current[key] = now;
+
+		if (isMacTheme && key !== itemKey(startItem)) {
+			setBouncingApp(key);
+			setTimeout(() => {
+				setBouncingApp((curr) => (curr === key ? null : curr));
+			}, 950);
+		}
 
 		try {
 			if (app.path === "start") {
@@ -788,8 +804,41 @@ const Dock = memo(function Dock() {
 		tap: { scale: 0.95 }
 	};
 
+	const getIconAnimation = (key: string) => {
+		if (key === itemKey(startItem)) {
+			return pressedApp === key ? "tap" : "idle";
+		}
+		if (pressedApp === key) {
+			return isMacTheme ? { scale: 0.92, y: 0 } : "tap";
+		}
+		if (isMacTheme) {
+			if (isDragging || !hoveredApp || hoveredApp === itemKey(startItem)) return { scale: 1, y: 0 };
+			const macAppKeys = dockItems.filter((i) => i.path !== "start").map(itemKey);
+			const hIdx = macAppKeys.indexOf(hoveredApp);
+			const cIdx = macAppKeys.indexOf(key);
+			if (hIdx === -1 || cIdx === -1) return { scale: 1, y: 0 };
+			const dist = Math.abs(hIdx - cIdx);
+			if (dist === 0) return { scale: 1.34, y: -9 };
+			if (dist === 1) return { scale: 1.18, y: -5 };
+			if (dist === 2) return { scale: 1.07, y: -2 };
+			return { scale: 1, y: 0 };
+		}
+		return isDragging && !pinnedApps.some((p) => p.path === key)
+			? "idle"
+			: hoveredApp === key && !isDragging
+				? "hover"
+				: "idle";
+	};
+
+	const iconMotionTransition = isMacTheme
+		? { type: "spring" as const, stiffness: 450, damping: 28, mass: 0.45 }
+		: undefined;
+
 	return (
-		<div className={`dock-container ${isDragging ? "dragging" : ""}`} onClick={closeMenu}>
+		<div
+			className={`dock-container ${isMacTheme ? "dock-theme-macos-container" : ""} ${isDragging ? "dragging" : ""}`}
+			onClick={closeMenu}
+		>
 			<div
 				style={{
 					width: "100%",
@@ -802,7 +851,7 @@ const Dock = memo(function Dock() {
 				<motion.div
 					ref={dockRef}
 					layout
-					className={`dock ${isExpanded && !isHidden ? "dock-expanded" : ""} ${isImpacted && !isExpanded && !isHidden ? "dock-impacted" : ""} ${dockIconOnly ? "dock-icon-only" : ""} ${isAdaptive ? "dock-adaptive" : ""}`}
+					className={`dock ${isMacTheme ? "dock-theme-macos" : ""} ${isExpanded && !isHidden ? "dock-expanded" : ""} ${isImpacted && !isExpanded && !isHidden ? "dock-impacted" : ""} ${dockIconOnly ? "dock-icon-only" : ""} ${isAdaptive ? "dock-adaptive" : ""}`}
 					onMouseEnter={() => setIsDockHovered(true)}
 					onMouseLeave={() => {
 						setIsDockHovered(false);
@@ -814,20 +863,40 @@ const Dock = memo(function Dock() {
 						opacity: 1,
 						width: 34,
 						height: 34,
-						borderTopLeftRadius: 17,
-						borderTopRightRadius: 17,
-						borderBottomLeftRadius: 17,
-						borderBottomRightRadius: 17
+						borderTopLeftRadius: isMacTheme && isExpanded ? 22 : 17,
+						borderTopRightRadius: isMacTheme && isExpanded ? 22 : 17,
+						borderBottomLeftRadius: isMacTheme && isExpanded ? 22 : 17,
+						borderBottomRightRadius: isMacTheme && isExpanded ? 22 : 17
 					}}
 					animate={{
 						y: !isReady ? -800 : isVisible ? (isHidden ? 100 : 0) : 150,
 						width:
 							isExpanded && !isHidden && isVisible ? (isAdaptive ? adaptiveWidth : "auto") : 34,
 						height: isExpanded && !isHidden && isVisible ? "auto" : 34,
-						borderTopLeftRadius: (isImpacted || isExpanded) && !isHidden && isVisible ? 18 : 17,
-						borderTopRightRadius: (isImpacted || isExpanded) && !isHidden && isVisible ? 18 : 17,
-						borderBottomLeftRadius: (isImpacted || isExpanded) && !isHidden && isVisible ? 0 : 17,
-						borderBottomRightRadius: (isImpacted || isExpanded) && !isHidden && isVisible ? 0 : 17,
+						borderTopLeftRadius:
+							isMacTheme && isExpanded
+								? 22
+								: (isImpacted || isExpanded) && !isHidden && isVisible
+									? 18
+									: 17,
+						borderTopRightRadius:
+							isMacTheme && isExpanded
+								? 22
+								: (isImpacted || isExpanded) && !isHidden && isVisible
+									? 18
+									: 17,
+						borderBottomLeftRadius:
+							isMacTheme && isExpanded
+								? 22
+								: (isImpacted || isExpanded) && !isHidden && isVisible
+									? 0
+									: 17,
+						borderBottomRightRadius:
+							isMacTheme && isExpanded
+								? 22
+								: (isImpacted || isExpanded) && !isHidden && isVisible
+									? 0
+									: 17,
 						opacity: isVisible ? 1 : 0,
 						scale: scale
 					}}
@@ -962,7 +1031,7 @@ const Dock = memo(function Dock() {
 											}}
 										>
 											<motion.div
-												className="dock-icon-wrapper"
+												className={`dock-icon-wrapper ${bouncingApp === itemKey(app) ? "macos-bouncing" : ""}`}
 												initial={ITEM_INITIAL}
 												animate={ITEM_ANIMATE}
 												exit={ITEM_EXIT}
@@ -1036,16 +1105,9 @@ const Dock = memo(function Dock() {
 												)}
 												<motion.div
 													className="dock-icon"
-													variants={iconVariants}
-													animate={
-														pressedApp === itemKey(app)
-															? "tap"
-															: isDragging && !app.is_pinned
-																? "idle"
-																: hoveredApp === itemKey(app) && !isDragging
-																	? "hover"
-																	: "idle"
-													}
+													variants={!isMacTheme ? iconVariants : undefined}
+													animate={getIconAnimation(itemKey(app))}
+													transition={iconMotionTransition}
 													whileDrag="drag"
 													onPointerDown={() => setPressedApp(itemKey(app))}
 													onPointerUp={() => setPressedApp(null)}
@@ -1094,6 +1156,10 @@ const Dock = memo(function Dock() {
 									))}
 								</Reorder.Group>
 
+								{isMacTheme && unpinnedItems.length > 0 && (
+									<div className="dock-macos-divider" />
+								)}
+
 								{unpinnedItems.map((app) => (
 									<motion.div
 										key={app.path}
@@ -1108,7 +1174,7 @@ const Dock = memo(function Dock() {
 											}
 										}}
 										exit={{ opacity: 0, scale: 0, transition: { duration: 0.12 } }}
-										className="dock-icon-wrapper"
+										className={`dock-icon-wrapper ${bouncingApp === itemKey(app) ? "macos-bouncing" : ""}`}
 										onContextMenu={(e) => handleContextMenu(e, app)}
 										onMouseEnter={() => setHoveredApp(itemKey(app))}
 										onMouseLeave={() => {
@@ -1185,14 +1251,9 @@ const Dock = memo(function Dock() {
 										)}
 										<motion.div
 											className="dock-icon"
-											variants={iconVariants}
-											animate={
-												pressedApp === itemKey(app)
-													? "tap"
-													: hoveredApp === itemKey(app) && !isDragging
-														? "hover"
-														: "idle"
-											}
+											variants={!isMacTheme ? iconVariants : undefined}
+											animate={getIconAnimation(itemKey(app))}
+											transition={iconMotionTransition}
 											onPointerDown={() => setPressedApp(itemKey(app))}
 											onPointerUp={() => setPressedApp(null)}
 											onPointerCancel={() => setPressedApp(null)}

@@ -1,9 +1,11 @@
-import { Monitor, Eye, EyeOff, Circle, Maximize2, Keyboard } from "lucide-react";
+import { Monitor, Eye, EyeOff, Circle, Maximize2, Keyboard, Palette } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 
 interface DockTabProps {
 	dockEnabled: boolean;
 	toggleDock: () => void;
+	dockTheme: string;
+	setDockThemeValue: (theme: string) => void;
 	dockMode: string;
 	setDockModeValue: (mode: string) => void;
 	dockPreviewEnabled: boolean;
@@ -19,6 +21,8 @@ interface DockTabProps {
 export function DockTab({
 	dockEnabled,
 	toggleDock,
+	dockTheme,
+	setDockThemeValue,
 	dockMode,
 	setDockModeValue,
 	dockPreviewEnabled,
@@ -43,6 +47,21 @@ export function DockTab({
 
 				{dockEnabled && (
 					<>
+						<SettingRow
+							icon={Palette}
+							label="Dock Theme"
+							desc="Choose visual style for the dock"
+						>
+							<select
+								className="settings-select"
+								value={dockTheme}
+								onChange={(e) => setDockThemeValue(e.target.value)}
+							>
+								<option value="default">Default</option>
+								<option value="macos">macOS</option>
+							</select>
+						</SettingRow>
+
 						<SettingRow
 							icon={dockMode === "fixed" ? EyeOff : Eye}
 							label="Behavior"
@@ -82,7 +101,7 @@ export function DockTab({
 							icon={Keyboard}
 							label="Win+Number Shortcuts"
 							desc="Open pinned apps with Win+1 through Win+9"
-							divider={dockMode === "fixed"}
+							divider={dockMode === "fixed" && dockTheme !== "macos"}
 						>
 							<label className="toggle-switch">
 								<input
@@ -94,7 +113,7 @@ export function DockTab({
 							</label>
 						</SettingRow>
 
-						{dockMode === "fixed" && (
+						{dockMode === "fixed" && dockTheme !== "macos" && (
 							<SettingRow
 								icon={Maximize2}
 								label="Adaptive Mode"

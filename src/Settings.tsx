@@ -171,6 +171,8 @@ function SettingsApp() {
 						<DockTab
 							dockEnabled={settings.dockEnabled}
 							toggleDock={settings.toggleDock}
+							dockTheme={settings.dockTheme}
+							setDockThemeValue={settings.setDockThemeValue}
 							dockMode={settings.dockMode}
 							setDockModeValue={settings.setDockModeValue}
 							dockPreviewEnabled={settings.dockPreviewEnabled}
