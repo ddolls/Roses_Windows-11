@@ -72,6 +72,7 @@ const Dock = memo(function Dock() {
 	const [dockTheme, setDockTheme] = useState(() => {
 		return localStorage.getItem("bloom-dock-theme") || "default";
 	});
+	const isFloatingTheme = dockTheme !== "default";
 	const isMacTheme = dockTheme === "macos" || dockTheme === "mac os";
 	const [bouncingApp, setBouncingApp] = useState<string | null>(null);
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(
@@ -152,7 +153,7 @@ const Dock = memo(function Dock() {
 	// standard maximized window is in the foreground, so the reserved strip no
 	// longer looks like a cut-out around the centered pill.
 	const isAdaptive =
-		!isMacTheme && dockAdaptive && dockMode === "fixed" && isMaximized && isExpanded && !isHidden && isVisible;
+		!isFloatingTheme && dockAdaptive && dockMode === "fixed" && isMaximized && isExpanded && !isHidden && isVisible;
 	// Nearly full width — 24px margin per side at the visual (scaled) size.
 	// Pre-transform: visual = width * scale, so width = (viewport - 48*scale) / scale.
 	const adaptiveWidth = (viewportWidth - 48 * scale) / scale;
@@ -880,7 +881,7 @@ const Dock = memo(function Dock() {
 
 	return (
 		<div
-			className={`dock-container ${isMacTheme ? "dock-theme-macos-container" : ""} ${isDragging ? "dragging" : ""}`}
+			className={`dock-container dock-theme-${dockTheme}-container ${isFloatingTheme ? "dock-floating-container" : ""} ${isMacTheme ? "dock-theme-macos-container" : ""} ${isDragging ? "dragging" : ""}`}
 			onClick={closeMenu}
 		>
 			<div
@@ -895,7 +896,7 @@ const Dock = memo(function Dock() {
 				<motion.div
 					ref={dockRef}
 					layout
-					className={`dock ${isMacTheme ? "dock-theme-macos" : ""} ${isExpanded && !isHidden ? "dock-expanded" : ""} ${isImpacted && !isExpanded && !isHidden ? "dock-impacted" : ""} ${dockIconOnly ? "dock-icon-only" : ""} ${isAdaptive ? "dock-adaptive" : ""}`}
+					className={`dock dock-theme-${dockTheme} ${isFloatingTheme ? "dock-floating" : ""} ${isMacTheme ? "dock-theme-macos" : ""} ${isExpanded && !isHidden ? "dock-expanded" : ""} ${isImpacted && !isExpanded && !isHidden ? "dock-impacted" : ""} ${dockIconOnly ? "dock-icon-only" : ""} ${isAdaptive ? "dock-adaptive" : ""}`}
 					onMouseEnter={() => setIsDockHovered(true)}
 					onMouseLeave={() => {
 						setIsDockHovered(false);
@@ -907,10 +908,10 @@ const Dock = memo(function Dock() {
 						opacity: 1,
 						width: 34,
 						height: 34,
-						borderTopLeftRadius: isMacTheme && isExpanded ? 22 : 17,
-						borderTopRightRadius: isMacTheme && isExpanded ? 22 : 17,
-						borderBottomLeftRadius: isMacTheme && isExpanded ? 22 : 17,
-						borderBottomRightRadius: isMacTheme && isExpanded ? 22 : 17
+						borderTopLeftRadius: isFloatingTheme && isExpanded ? 22 : 17,
+						borderTopRightRadius: isFloatingTheme && isExpanded ? 22 : 17,
+						borderBottomLeftRadius: isFloatingTheme && isExpanded ? 22 : 17,
+						borderBottomRightRadius: isFloatingTheme && isExpanded ? 22 : 17
 					}}
 					animate={{
 						y: !isReady ? -800 : isVisible ? (isHidden ? 100 : 0) : 150,
@@ -918,25 +919,25 @@ const Dock = memo(function Dock() {
 							isExpanded && !isHidden && isVisible ? (isAdaptive ? adaptiveWidth : "auto") : 34,
 						height: isExpanded && !isHidden && isVisible ? "auto" : 34,
 						borderTopLeftRadius:
-							isMacTheme && isExpanded
+							isFloatingTheme && isExpanded
 								? 22
 								: (isImpacted || isExpanded) && !isHidden && isVisible
 									? 18
 									: 17,
 						borderTopRightRadius:
-							isMacTheme && isExpanded
+							isFloatingTheme && isExpanded
 								? 22
 								: (isImpacted || isExpanded) && !isHidden && isVisible
 									? 18
 									: 17,
 						borderBottomLeftRadius:
-							isMacTheme && isExpanded
+							isFloatingTheme && isExpanded
 								? 22
 								: (isImpacted || isExpanded) && !isHidden && isVisible
 									? 0
 									: 17,
 						borderBottomRightRadius:
-							isMacTheme && isExpanded
+							isFloatingTheme && isExpanded
 								? 22
 								: (isImpacted || isExpanded) && !isHidden && isVisible
 									? 0
@@ -1200,7 +1201,7 @@ const Dock = memo(function Dock() {
 									))}
 								</Reorder.Group>
 
-								{isMacTheme && unpinnedItems.length > 0 && (
+								{isFloatingTheme && unpinnedItems.length > 0 && (
 									<div className="dock-macos-divider" />
 								)}
 

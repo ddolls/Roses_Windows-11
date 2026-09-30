@@ -59,6 +59,11 @@ export function DockTab({
 							>
 								<option value="default">Default</option>
 								<option value="macos">macOS</option>
+								<option value="glass">Liquid Glass</option>
+								<option value="cyberpunk">Cyberpunk Neon</option>
+								<option value="nordic">Nordic Frost</option>
+								<option value="oled">OLED Deep Black</option>
+								<option value="aurora">Aurora Borealis</option>
 							</select>
 						</SettingRow>
 
