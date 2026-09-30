@@ -392,6 +392,7 @@ body {
 	z-index: 9999;
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 	min-width: 160px;
+	max-height: calc(100vh - 20px);
 	pointer-events: auto;
 	display: flex;
 	flex-direction: column;
@@ -449,6 +450,16 @@ body {
 	flex-direction: column;
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 	z-index: 10000;
+}
+
+.context-menu.flip-submenu .submenu {
+	left: auto;
+	right: 100%;
+}
+
+.context-menu.flip-submenu .submenu::before {
+	left: auto;
+	right: -20px;
 }
 
 /* Bridge the gap to prevent losing hover */

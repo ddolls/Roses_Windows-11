@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, memo } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -551,12 +551,37 @@ const Dock = memo(function Dock() {
 
 	const menuRef = useRef<HTMLDivElement>(null);
 	const popupRef = useRef<HTMLDivElement>(null);
+	const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
 	const handleContextMenu = (e: React.MouseEvent, app: AppInfo | null) => {
 		e.stopPropagation();
 		e.preventDefault();
+		const estimatedHeight = (app ? (app.is_running ? 320 : 240) : 120) * scale;
+		const initY = Math.max(10, e.clientY - estimatedHeight);
+		setMenuPos({ x: e.clientX, y: initY });
 		setContextMenu({ x: e.clientX, y: e.clientY, app });
 	};
+
+	useLayoutEffect(() => {
+		if (contextMenu && menuRef.current) {
+			const r = menuRef.current.getBoundingClientRect();
+			let x = contextMenu.x;
+			// Place bottom of menu 8px above the clicked cursor position
+			let y = contextMenu.y - r.height - 8;
+
+			if (y < 10) {
+				y = 10;
+			}
+			if (y + r.height > window.innerHeight - 10) {
+				y = Math.max(10, window.innerHeight - r.height - 10);
+			}
+			if (x + r.width > window.innerWidth - 10) {
+				x = Math.max(10, window.innerWidth - r.width - 10);
+			}
+
+			setMenuPos({ x, y });
+		}
+	}, [contextMenu, scale]);
 
 	const closeMenu = () => {
 		setContextMenu(null);
@@ -594,7 +619,7 @@ const Dock = memo(function Dock() {
 		}
 
 		invoke("set_menu_open", { open, rect }).catch(() => {});
-	}, [contextMenu, showAddPopup, pinnedApps, activeApps, activeSubmenu, scale]);
+	}, [contextMenu, menuPos, showAddPopup, pinnedApps, activeApps, activeSubmenu, scale]);
 
 	const dockItems = useMemo(() => {
 		const runningMap = new Map();
@@ -1324,10 +1349,10 @@ const Dock = memo(function Dock() {
 			{contextMenu && (
 				<div
 					ref={menuRef}
-					className="context-menu"
+					className={`context-menu ${menuPos.x + 340 > window.innerWidth ? "flip-submenu" : ""}`}
 					style={{
-						left: contextMenu.x,
-						top: contextMenu.y - (contextMenu.app ? 200 : 100) * scale,
+						left: menuPos.x,
+						top: menuPos.y,
 						zoom: scale
 					}}
 					onClick={(e) => e.stopPropagation()}
