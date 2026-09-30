@@ -151,6 +151,7 @@ fn main() {
             get_custom_icons,
             set_menu_open,
             focus_window,
+            maximize_window,
             close_window,
             quit_bloom,
             restart_bloom,

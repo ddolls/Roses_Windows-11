@@ -791,10 +791,11 @@ pub async fn get_active_windows() -> Vec<AppInfo> {
     .unwrap_or_default()
 }
 
+static MAXIMIZED_WINDOWS: std::sync::Mutex<Option<std::collections::HashSet<isize>>> =
+    std::sync::Mutex::new(None);
+
 pub fn record_maximized_state(hwnd: isize, is_max: bool) {
-    static SET: std::sync::Mutex<Option<std::collections::HashSet<isize>>> =
-        std::sync::Mutex::new(None);
-    if let Ok(mut guard) = SET.lock() {
+    if let Ok(mut guard) = MAXIMIZED_WINDOWS.lock() {
         let set = guard.get_or_insert_with(std::collections::HashSet::new);
         if is_max {
             set.insert(hwnd);
@@ -804,10 +805,17 @@ pub fn record_maximized_state(hwnd: isize, is_max: bool) {
     }
 }
 
-fn take_maximized_state(hwnd: isize) -> bool {
-    static SET: std::sync::Mutex<Option<std::collections::HashSet<isize>>> =
-        std::sync::Mutex::new(None);
-    if let Ok(mut guard) = SET.lock() {
+pub fn is_recorded_maximized(hwnd: isize) -> bool {
+    if let Ok(guard) = MAXIMIZED_WINDOWS.lock() {
+        if let Some(set) = guard.as_ref() {
+            return set.contains(&hwnd);
+        }
+    }
+    false
+}
+
+pub fn take_maximized_state(hwnd: isize) -> bool {
+    if let Ok(mut guard) = MAXIMIZED_WINDOWS.lock() {
         if let Some(set) = guard.as_mut() {
             return set.remove(&hwnd);
         }
@@ -899,10 +907,10 @@ pub async fn focus_window(hwnd: isize) {
         use windows::Win32::UI::WindowsAndMessaging::{
             FindWindowExW, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindow,
             GetWindowLongW, GetWindowPlacement, GetWindowThreadProcessId, IsChild, IsIconic,
-            IsWindow, IsWindowVisible, IsZoomed, OpenIcon, PostMessageW, ShowWindow,
+            IsWindow, IsWindowVisible, IsZoomed, PostMessageW, ShowWindow,
             ShowWindowAsync, GA_ROOTOWNER, GWL_STYLE, GW_OWNER, SC_MAXIMIZE, SC_RESTORE,
             SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED,
-            WINDOWPLACEMENT, WM_SYSCOMMAND, WS_MINIMIZE,
+            SW_SHOWMINNOACTIVE, WINDOWPLACEMENT, WM_SYSCOMMAND, WS_MAXIMIZE, WS_MINIMIZE,
         };
         use windows::core::w;
 
@@ -934,60 +942,103 @@ pub async fn focus_window(hwnd: isize) {
             return;
         }
 
-        let get_was_maximized = |h: HWND, raw: isize| -> bool {
-            let was_tracked = take_maximized_state(raw);
-            let mut wp = WINDOWPLACEMENT {
-                length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
-                ..Default::default()
-            };
-            let _ = GetWindowPlacement(h, &mut wp);
-            was_tracked
-                || (wp.flags.0 & 2) != 0 // WPF_RESTORETOMAXIMIZED
-                || wp.showCmd == SW_SHOWMAXIMIZED.0 as u32
-                || wp.showCmd == SW_MAXIMIZE.0 as u32
-        };
-
         let mut wp = WINDOWPLACEMENT {
             length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
             ..Default::default()
         };
         let _ = GetWindowPlacement(top_hwnd, &mut wp);
 
+        let mut in_wp = WINDOWPLACEMENT {
+            length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+            ..Default::default()
+        };
+        let _ = GetWindowPlacement(in_hwnd, &mut in_wp);
+
         let style = GetWindowLongW(top_hwnd, GWL_STYLE) as u32;
         let in_style = GetWindowLongW(in_hwnd, GWL_STYLE) as u32;
+
+        let mut top_cloaked = 0u32;
+        let _ = windows::Win32::Graphics::Dwm::DwmGetWindowAttribute(
+            top_hwnd,
+            windows::Win32::Graphics::Dwm::DWMWA_CLOAKED,
+            &mut top_cloaked as *mut _ as *mut _,
+            std::mem::size_of::<u32>() as u32,
+        );
+
+        let mut in_cloaked = 0u32;
+        let _ = windows::Win32::Graphics::Dwm::DwmGetWindowAttribute(
+            in_hwnd,
+            windows::Win32::Graphics::Dwm::DWMWA_CLOAKED,
+            &mut in_cloaked as *mut _ as *mut _,
+            std::mem::size_of::<u32>() as u32,
+        );
+
+        let is_min_show_cmd = |cmd: u32| -> bool {
+            cmd == SW_SHOWMINIMIZED.0 as u32
+                || cmd == SW_MINIMIZE.0 as u32
+                || cmd == SW_SHOWMINNOACTIVE.0 as u32
+        };
 
         let is_minimized = IsIconic(top_hwnd).as_bool()
             || IsIconic(in_hwnd).as_bool()
             || (style & WS_MINIMIZE.0) != 0
             || (in_style & WS_MINIMIZE.0) != 0
-            || wp.showCmd == SW_SHOWMINIMIZED.0 as u32
+            || is_min_show_cmd(wp.showCmd)
+            || is_min_show_cmd(in_wp.showCmd)
+            || top_cloaked != 0
+            || in_cloaked != 0
             || !IsWindowVisible(top_hwnd).as_bool()
             || !IsWindowVisible(in_hwnd).as_bool();
 
+        let was_maximized = take_maximized_state(raw_top)
+            || take_maximized_state(raw_in)
+            || is_recorded_maximized(raw_top)
+            || is_recorded_maximized(raw_in)
+            || (style & WS_MAXIMIZE.0) != 0
+            || (in_style & WS_MAXIMIZE.0) != 0
+            || (wp.flags.0 & 2) != 0 // WPF_RESTORETOMAXIMIZED
+            || (in_wp.flags.0 & 2) != 0
+            || wp.showCmd == SW_SHOWMAXIMIZED.0 as u32
+            || wp.showCmd == SW_MAXIMIZE.0 as u32
+            || in_wp.showCmd == SW_SHOWMAXIMIZED.0 as u32
+            || in_wp.showCmd == SW_MAXIMIZE.0 as u32
+            || IsZoomed(top_hwnd).as_bool()
+            || IsZoomed(in_hwnd).as_bool()
+            || crate::utils::is_window_fullscreen(top_hwnd);
+
+        let targets = if top_hwnd != in_hwnd && !in_hwnd.is_invalid() {
+            vec![top_hwnd, in_hwnd]
+        } else {
+            vec![top_hwnd]
+        };
+
         if is_minimized {
-            // CASE 1: Window is minimized / hidden -> Restore and bring to foreground
-            let was_maximized = get_was_maximized(top_hwnd, raw_top);
-            let _ = OpenIcon(top_hwnd);
-            if was_maximized {
-                let _ = ShowWindow(top_hwnd, SW_MAXIMIZE);
-                let _ = ShowWindowAsync(top_hwnd, SW_MAXIMIZE);
-                let _ = PostMessageW(
-                    Some(top_hwnd),
-                    WM_SYSCOMMAND,
-                    WPARAM(SC_MAXIMIZE as usize),
-                    LPARAM(0),
-                );
-            } else {
-                let _ = ShowWindow(top_hwnd, SW_RESTORE);
-                let _ = ShowWindowAsync(top_hwnd, SW_RESTORE);
-                let _ = PostMessageW(
-                    Some(top_hwnd),
-                    WM_SYSCOMMAND,
-                    WPARAM(SC_RESTORE as usize),
-                    LPARAM(0),
-                );
+            // CASE 1: Window is minimized / cloaked / hidden -> Restore to screen
+            for &t in &targets {
+                if was_maximized {
+                    let _ = ShowWindow(t, SW_MAXIMIZE);
+                    let _ = ShowWindowAsync(t, SW_MAXIMIZE);
+                    let _ = PostMessageW(
+                        Some(t),
+                        WM_SYSCOMMAND,
+                        WPARAM(SC_MAXIMIZE as usize),
+                        LPARAM(0),
+                    );
+                } else {
+                    let _ = ShowWindow(t, SW_RESTORE);
+                    let _ = ShowWindowAsync(t, SW_RESTORE);
+                    let _ = PostMessageW(
+                        Some(t),
+                        WM_SYSCOMMAND,
+                        WPARAM(SC_RESTORE as usize),
+                        LPARAM(0),
+                    );
+                }
             }
             force_set_foreground_window(top_hwnd);
+            if top_hwnd != in_hwnd {
+                force_set_foreground_window(in_hwnd);
+            }
             return;
         }
 
@@ -1039,7 +1090,11 @@ pub async fn focus_window(hwnd: isize) {
 
         if is_active {
             // CASE 2: Window is currently active -> Minimize it (exact Windows Taskbar behavior)
-            let is_max = IsZoomed(top_hwnd).as_bool() || crate::utils::is_window_fullscreen(top_hwnd);
+            let is_max = IsZoomed(top_hwnd).as_bool()
+                || IsZoomed(in_hwnd).as_bool()
+                || (style & WS_MAXIMIZE.0) != 0
+                || (in_style & WS_MAXIMIZE.0) != 0
+                || crate::utils::is_window_fullscreen(top_hwnd);
             record_maximized_state(raw_top, is_max);
             record_maximized_state(raw_in, is_max);
 
@@ -1050,11 +1105,75 @@ pub async fn focus_window(hwnd: isize) {
                 }
             }
 
-            let _ = ShowWindowAsync(top_hwnd, SW_MINIMIZE);
+            for &t in &targets {
+                let _ = ShowWindowAsync(t, SW_MINIMIZE);
+            }
         } else {
             // CASE 3: Window is currently in background -> Bring to front and activate
-            let _ = ShowWindowAsync(top_hwnd, SW_SHOW);
+            if was_maximized {
+                for &t in &targets {
+                    let _ = ShowWindow(t, SW_MAXIMIZE);
+                    let _ = ShowWindowAsync(t, SW_MAXIMIZE);
+                }
+            } else {
+                for &t in &targets {
+                    let _ = ShowWindowAsync(t, SW_SHOW);
+                }
+            }
             force_set_foreground_window(top_hwnd);
+            if top_hwnd != in_hwnd {
+                force_set_foreground_window(in_hwnd);
+            }
+        }
+    })
+    .await
+    .unwrap_or_default();
+}
+
+#[tauri::command]
+pub async fn maximize_window(hwnd: isize) {
+    if hwnd <= 0 {
+        return;
+    }
+    tauri::async_runtime::spawn_blocking(move || unsafe {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetAncestor, IsWindow, PostMessageW, ShowWindow, ShowWindowAsync,
+            GA_ROOTOWNER, SC_MAXIMIZE, SW_MAXIMIZE, WM_SYSCOMMAND,
+        };
+
+        let in_hwnd = HWND(hwnd as *mut _);
+        if !IsWindow(Some(in_hwnd)).as_bool() {
+            return;
+        }
+
+        let root = GetAncestor(in_hwnd, GA_ROOTOWNER);
+        let top_hwnd = if !root.is_invalid() && IsWindow(Some(root)).as_bool() {
+            root
+        } else {
+            in_hwnd
+        };
+
+        let targets = if top_hwnd != in_hwnd && !in_hwnd.is_invalid() {
+            vec![top_hwnd, in_hwnd]
+        } else {
+            vec![top_hwnd]
+        };
+
+        for &t in &targets {
+            let _ = ShowWindow(t, SW_MAXIMIZE);
+            let _ = ShowWindowAsync(t, SW_MAXIMIZE);
+            let _ = PostMessageW(
+                Some(t),
+                WM_SYSCOMMAND,
+                WPARAM(SC_MAXIMIZE as usize),
+                LPARAM(0),
+            );
+        }
+
+        force_set_foreground_window(top_hwnd);
+        if top_hwnd != in_hwnd {
+            force_set_foreground_window(in_hwnd);
         }
     })
     .await

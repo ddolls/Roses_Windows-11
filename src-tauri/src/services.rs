@@ -3016,16 +3016,23 @@ unsafe fn dialog_has_tab_control(hwnd: HWND) -> bool {
 pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let apps = &mut *(lparam.0 as *mut Vec<AppInfo>);
 
-    if IsWindowVisible(hwnd).as_bool() {
+    let is_iconic = windows::Win32::UI::WindowsAndMessaging::IsIconic(hwnd).as_bool();
+    let style = windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(
+        hwnd,
+        windows::Win32::UI::WindowsAndMessaging::GWL_STYLE,
+    ) as u32;
+    let is_minimized = is_iconic
+        || (style & windows::Win32::UI::WindowsAndMessaging::WS_MINIMIZE.0) != 0;
+
+    if IsWindowVisible(hwnd).as_bool() || is_minimized {
         // DWM-cloaked windows are not actually on screen: closed/suspended UWP
         // apps keep a cloaked frame alive, and windows on other virtual desktops
         // are shell-cloaked. Neither belongs in the dock. IsWindowVisible stays
         // true for them, so this needs the DWM check.
-        // However, minimized windows (IsIconic == true) are often marked with
+        // However, minimized windows (IsIconic == true or WS_MINIMIZE) are often marked with
         // DWM_CLOAKED_SHELL by DWM (especially UWP apps like Calculator, Settings,
-        // Terminal). They DO belong in the dock so they can be restored/maximized.
-        let is_iconic = windows::Win32::UI::WindowsAndMessaging::IsIconic(hwnd).as_bool();
-        if !is_iconic {
+        // Terminal, and Electron apps). They DO belong in the dock so they can be restored/maximized.
+        if !is_minimized {
             let mut cloaked = 0u32;
             let size = std::mem::size_of::<u32>() as u32;
             if windows::Win32::Graphics::Dwm::DwmGetWindowAttribute(

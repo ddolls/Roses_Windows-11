@@ -474,9 +474,28 @@ const Dock = memo(function Dock() {
 	};
 
 	const handleAppClick = async (app: AppInfo) => {
-		const targetHwnd =
+		let targetHwnd =
 			app.hwnd ||
 			(app.all_hwnds && app.all_hwnds.length > 0 ? app.all_hwnds[0][0] : undefined);
+
+		if (!targetHwnd && app.is_running) {
+			const found = activeApps.find((a) => {
+				const idA = appIdentity(a.path, a.executable, a.name);
+				const idApp = appIdentity(app.path, app.executable, app.name);
+				return (
+					idA === idApp ||
+					(a.executable &&
+						app.executable &&
+						a.executable.toLowerCase() === app.executable.toLowerCase())
+				);
+			});
+			if (found) {
+				targetHwnd =
+					found.hwnd ||
+					(found.all_hwnds && found.all_hwnds.length > 0 ? found.all_hwnds[0][0] : undefined);
+			}
+		}
+
 		const key = targetHwnd ? `hwnd-${targetHwnd}` : `path-${app.path}`;
 		const now = Date.now();
 		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 150) {
@@ -1424,6 +1443,25 @@ const Dock = memo(function Dock() {
 							{contextMenu.app.is_running && (
 								<>
 									<div className="menu-divider" />
+									<div
+										className="menu-item"
+										onClick={async () => {
+											const app = contextMenu.app;
+											closeMenu();
+											if (app) {
+												const targetHwnd =
+													app.hwnd ||
+													(app.all_hwnds && app.all_hwnds.length > 0
+														? app.all_hwnds[0][0]
+														: undefined);
+												if (targetHwnd) {
+													await invoke("maximize_window", { hwnd: targetHwnd }).catch(() => {});
+												}
+											}
+										}}
+									>
+										Maximize Window
+									</div>
 									<div
 										className="menu-item quit"
 										onClick={async () => {
