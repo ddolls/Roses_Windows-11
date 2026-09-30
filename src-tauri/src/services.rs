@@ -551,15 +551,6 @@ unsafe extern "system" fn thumbnail_capture_proc(
         return;
     }
 
-    if event == windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART {
-        use windows::Win32::UI::WindowsAndMessaging::{IsWindow, IsZoomed};
-        if IsWindow(Some(hwnd)).as_bool() {
-            let is_max = IsZoomed(hwnd).as_bool() || crate::utils::is_window_fullscreen(hwnd);
-            crate::commands::record_maximized_state(hwnd.0 as isize, is_max);
-        }
-        return;
-    }
-
     // Only the restore event is useful here. On MINIMIZESTART the window is
     // mid-animation and PrintWindow can capture a black frame, which would
     // overwrite a good cached thumbnail; the focus hook keeps the cache warm

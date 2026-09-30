@@ -1,6 +1,6 @@
 [package]
 name = "roses"
-version = "1.0.10"
+version = "1.0.11"
 description = "Roses Desktop Companion"
 authors = ["Montana"]
 edition = "2021"

@@ -496,17 +496,11 @@ const Dock = memo(function Dock() {
 			}
 		}
 
-		const key = targetHwnd ? `hwnd-${targetHwnd}` : `path-${app.path}`;
-		const now = Date.now();
-		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 150) {
-			return;
-		}
-		lastClickTimeRef.current[key] = now;
-
-		if (isMacTheme && key !== itemKey(startItem)) {
-			setBouncingApp(key);
+		if (isMacTheme && app.path !== "start") {
+			const bounceKey = targetHwnd ? `hwnd-${targetHwnd}` : `path-${app.path}`;
+			setBouncingApp(bounceKey);
 			setTimeout(() => {
-				setBouncingApp((curr) => (curr === key ? null : curr));
+				setBouncingApp((curr) => (curr === bounceKey ? null : curr));
 			}, 950);
 		}
 
