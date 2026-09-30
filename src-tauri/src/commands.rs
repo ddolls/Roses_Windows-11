@@ -602,38 +602,61 @@ fn launch_path(path: &str) {
 
         use std::path::Path;
         let mut final_path = path.to_string();
+        let mut final_args = String::new();
 
-        if !Path::new(&final_path).exists() {
-            let file_name = Path::new(&final_path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_lowercase();
+        let file_name = Path::new(&final_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
 
-            // Handle Discord/Slack style auto-updaters (app-x.x.x folder structure)
-            if file_name == "discord.exe"
-                || file_name == "slack.exe"
-                || file_name == "githubdesktop.exe"
-                || file_name == "zentwilight.exe"
-            {
-                if let Some(parent) = Path::new(&final_path).parent().and_then(|p| p.parent()) {
-                    if parent.exists() {
-                        if let Ok(entries) = std::fs::read_dir(parent) {
-                            let mut app_dirs = Vec::new();
-                            for entry in entries.flatten() {
-                                let name = entry.file_name().to_string_lossy().to_string();
-                                if (name.starts_with("app-") || name.starts_with("current"))
-                                    && entry.path().is_dir()
-                                {
-                                    app_dirs.push(entry.path());
-                                }
+        // Handle Discord/Slack style auto-updaters (app-x.x.x folder structure)
+        if file_name == "discord.exe"
+            || file_name == "slack.exe"
+            || file_name == "githubdesktop.exe"
+            || file_name == "zentwilight.exe"
+        {
+            let parent_dir = if let Some(parent) = Path::new(&final_path).parent() {
+                if parent
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.starts_with("app-") || s.starts_with("current"))
+                    .unwrap_or(false)
+                {
+                    parent.parent()
+                } else {
+                    Some(parent)
+                }
+            } else {
+                None
+            };
+
+            if let Some(parent) = parent_dir {
+                let update_exe = parent.join("Update.exe");
+                if update_exe.exists() {
+                    let exe_name = Path::new(&final_path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| file_name.clone());
+                    final_path = update_exe.to_string_lossy().to_string();
+                    final_args = format!("--processStart {}", exe_name);
+                } else if !Path::new(&final_path).exists() {
+                    if let Ok(entries) = std::fs::read_dir(parent) {
+                        let mut app_dirs = Vec::new();
+                        for entry in entries.flatten() {
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            if (name.starts_with("app-") || name.starts_with("current"))
+                                && entry.path().is_dir()
+                            {
+                                app_dirs.push(entry.path());
                             }
-                            app_dirs.sort();
-                            if let Some(latest) = app_dirs.last() {
-                                let exe = latest.join(Path::new(&final_path).file_name().unwrap());
-                                if exe.exists() {
-                                    final_path = exe.to_string_lossy().to_string();
-                                }
+                        }
+                        app_dirs.sort();
+                        if let Some(latest) = app_dirs.last() {
+                            let exe = latest.join(Path::new(&final_path).file_name().unwrap());
+                            if exe.exists() {
+                                final_path = exe.to_string_lossy().to_string();
                             }
                         }
                     }
@@ -646,12 +669,22 @@ fn launch_path(path: &str) {
             .chain(std::iter::once(0))
             .collect();
         let wide_open: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+        let wide_args: Vec<u16> = if final_args.is_empty() {
+            Vec::new()
+        } else {
+            final_args.encode_utf16().chain(std::iter::once(0)).collect()
+        };
+        let lp_parameters = if wide_args.is_empty() {
+            windows::core::PCWSTR::null()
+        } else {
+            windows::core::PCWSTR(wide_args.as_ptr())
+        };
 
         let res = ShellExecuteW(
             None,
             windows::core::PCWSTR(wide_open.as_ptr()),
             windows::core::PCWSTR(wide_path.as_ptr()),
-            None,
+            lp_parameters,
             None,
             SW_SHOWNORMAL,
         );
@@ -740,6 +773,9 @@ pub async fn get_active_windows() -> Vec<AppInfo> {
                         .unwrap_or(0);
                     ts_b.cmp(&ts_a)
                 });
+                if let Some(first) = hwnds.first() {
+                    app.hwnd = Some(first.0);
+                }
             }
         }
 
@@ -755,7 +791,7 @@ pub async fn get_active_windows() -> Vec<AppInfo> {
     .unwrap_or_default()
 }
 
-fn record_maximized_state(hwnd: isize, is_max: bool) {
+pub fn record_maximized_state(hwnd: isize, is_max: bool) {
     static SET: std::sync::Mutex<Option<std::collections::HashSet<isize>>> =
         std::sync::Mutex::new(None);
     if let Ok(mut guard) = SET.lock() {
@@ -795,35 +831,94 @@ fn should_debounce_focus(raw_hwnd: isize, cooldown_ms: i64) -> bool {
     false
 }
 
+pub unsafe fn force_set_foreground_window(hwnd: HWND) {
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, SetForegroundWindow,
+        SetWindowPos, HWND_TOP, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    let fg = GetForegroundWindow();
+    if fg == hwnd {
+        return;
+    }
+
+    let cur_thread = GetCurrentThreadId();
+    let fg_thread = if !fg.is_invalid() {
+        GetWindowThreadProcessId(fg, None)
+    } else {
+        0
+    };
+    let target_thread = GetWindowThreadProcessId(hwnd, None);
+
+    if fg_thread != 0 && fg_thread != cur_thread {
+        let _ = AttachThreadInput(cur_thread, fg_thread, true);
+    }
+    if target_thread != 0 && target_thread != cur_thread {
+        let _ = AttachThreadInput(cur_thread, target_thread, true);
+    }
+
+    let _ = BringWindowToTop(hwnd);
+    let _ = SetForegroundWindow(hwnd);
+    if !IsIconic(hwnd).as_bool() {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE,
+        );
+    }
+
+    if target_thread != 0 && target_thread != cur_thread {
+        let _ = AttachThreadInput(cur_thread, target_thread, false);
+    }
+    if fg_thread != 0 && fg_thread != cur_thread {
+        let _ = AttachThreadInput(cur_thread, fg_thread, false);
+    }
+}
+
 #[tauri::command]
 pub async fn focus_window(hwnd: isize) {
     if hwnd <= 0 {
         return;
     }
     tauri::async_runtime::spawn_blocking(move || unsafe {
-        use windows::Win32::Foundation::{LPARAM, WPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetForegroundWindow, GetWindowPlacement, GetWindowThreadProcessId, IsIconic, IsWindow,
-            IsWindowVisible, IsZoomed, PostMessageW, SetForegroundWindow, ShowWindowAsync,
-            SC_MAXIMIZE, SC_RESTORE, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW,
-            SW_SHOWMAXIMIZED, WINDOWPLACEMENT, WM_SYSCOMMAND,
+            FindWindowExW, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindow,
+            GetWindowPlacement, GetWindowThreadProcessId, IsChild, IsIconic, IsWindow,
+            IsWindowVisible, IsZoomed, ShowWindowAsync, GA_ROOTOWNER, GW_OWNER,
+            SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED, WINDOWPLACEMENT,
         };
-        let hwnd = HWND(hwnd as *mut _);
-        if !IsWindow(Some(hwnd)).as_bool() {
+        use windows::core::w;
+
+        let in_hwnd = HWND(hwnd as *mut _);
+        if !IsWindow(Some(in_hwnd)).as_bool() {
             return;
         }
+
+        // Always operate on the root top-level window (matching default Windows Taskbar behavior)
+        let root = GetAncestor(in_hwnd, GA_ROOTOWNER);
+        let top_hwnd = if !root.is_invalid() && IsWindow(Some(root)).as_bool() {
+            root
+        } else {
+            in_hwnd
+        };
 
         let my_pid = std::process::id();
         let mut target_pid = 0u32;
-        GetWindowThreadProcessId(hwnd, Some(&mut target_pid));
-        if target_pid == my_pid {
+        GetWindowThreadProcessId(top_hwnd, Some(&mut target_pid));
+        if target_pid == my_pid || target_pid == 0 {
             return;
         }
 
-        let raw_hwnd = hwnd.0 as *mut () as isize;
+        let raw_top = top_hwnd.0 as *mut () as isize;
+        let raw_in = in_hwnd.0 as *mut () as isize;
 
-        // Prevent rapid duplicate clicks or animation loops from re-triggering minimize/restore
-        if should_debounce_focus(raw_hwnd, 450) {
+        // Prevent rapid duplicate clicks from bouncing minimize/restore
+        if should_debounce_focus(raw_top, 150) || should_debounce_focus(raw_in, 150) {
             return;
         }
 
@@ -840,99 +935,109 @@ pub async fn focus_window(hwnd: isize) {
                 || wp.showCmd == SW_MAXIMIZE.0 as u32
         };
 
-        if !IsWindowVisible(hwnd).as_bool() {
-            let was_maximized = get_was_maximized(hwnd, raw_hwnd);
-            let _ = ShowWindowAsync(hwnd, SW_SHOW);
-            if was_maximized {
-                let _ = PostMessageW(
-                    Some(hwnd),
-                    WM_SYSCOMMAND,
-                    WPARAM(SC_MAXIMIZE as usize),
-                    LPARAM(0),
-                );
-                let _ = ShowWindowAsync(hwnd, SW_MAXIMIZE);
-            } else {
-                let _ = PostMessageW(
-                    Some(hwnd),
-                    WM_SYSCOMMAND,
-                    WPARAM(SC_RESTORE as usize),
-                    LPARAM(0),
-                );
-                let _ = ShowWindowAsync(hwnd, SW_RESTORE);
-            }
-            let _ = SetForegroundWindow(hwnd);
-        } else if IsIconic(hwnd).as_bool() {
-            let was_maximized = get_was_maximized(hwnd, raw_hwnd);
-            // Restore window preserving maximized / fullscreen state
-            if was_maximized {
-                let _ = PostMessageW(
-                    Some(hwnd),
-                    WM_SYSCOMMAND,
-                    WPARAM(SC_MAXIMIZE as usize),
-                    LPARAM(0),
-                );
-                let _ = ShowWindowAsync(hwnd, SW_MAXIMIZE);
-            } else {
-                let _ = PostMessageW(
-                    Some(hwnd),
-                    WM_SYSCOMMAND,
-                    WPARAM(SC_RESTORE as usize),
-                    LPARAM(0),
-                );
-                let _ = ShowWindowAsync(hwnd, SW_RESTORE);
-            }
-            let _ = SetForegroundWindow(hwnd);
-        } else {
-            // Minimize if: window is foreground, OR same process as foreground (not Bloom/Roses), OR recently focused
-            let fg = GetForegroundWindow();
-            let mut should_minimize = false;
+        let is_iconic = IsIconic(top_hwnd).as_bool() || !IsWindowVisible(top_hwnd).as_bool();
 
-            if !fg.is_invalid() && fg == hwnd {
-                should_minimize = true;
-            } else if !fg.is_invalid() {
-                let mut fg_pid = 0u32;
+        if is_iconic {
+            // CASE 1: Window is minimized / hidden -> Restore and bring to foreground
+            let was_maximized = get_was_maximized(top_hwnd, raw_top);
+            if was_maximized {
+                let _ = ShowWindowAsync(top_hwnd, SW_MAXIMIZE);
+            } else {
+                let _ = ShowWindowAsync(top_hwnd, SW_RESTORE);
+            }
+            force_set_foreground_window(top_hwnd);
+        } else {
+            // Window is visible. Determine if it is currently the active (foreground) window.
+            let fg = GetForegroundWindow();
+            let mut fg_pid = 0u32;
+            if !fg.is_invalid() {
                 GetWindowThreadProcessId(fg, Some(&mut fg_pid));
-                if fg_pid == target_pid && fg_pid != 0 && fg_pid != my_pid {
-                    should_minimize = true;
+            }
+
+            let mut is_active = false;
+
+            if !fg.is_invalid() {
+                if fg == top_hwnd || fg == in_hwnd {
+                    is_active = true;
+                } else {
+                    let fg_root = GetAncestor(fg, GA_ROOTOWNER);
+                    if fg_root == top_hwnd || fg_root == in_hwnd {
+                        is_active = true;
+                    } else if GetWindow(fg, GW_OWNER) == Ok(top_hwnd) || GetWindow(fg, GW_OWNER) == Ok(in_hwnd) {
+                        is_active = true;
+                    } else if IsChild(top_hwnd, fg).as_bool() || IsChild(in_hwnd, fg).as_bool() {
+                        is_active = true;
+                    } else if fg_pid != 0 && fg_pid == target_pid && fg_pid != my_pid {
+                        is_active = true;
+                    } else {
+                        // Check for UWP ApplicationFrameWindow
+                        let mut class_buf = [0u16; 64];
+                        let class_len = GetClassNameW(top_hwnd, &mut class_buf);
+                        let class_name = String::from_utf16_lossy(&class_buf[..class_len as usize]);
+                        if class_name == "ApplicationFrameWindow" {
+                            if let Ok(core) =
+                                FindWindowExW(Some(top_hwnd), None, w!("Windows.UI.Core.CoreWindow"), None)
+                            {
+                                if !core.is_invalid() {
+                                    let mut core_pid = 0u32;
+                                    GetWindowThreadProcessId(core, Some(&mut core_pid));
+                                    if core == fg || (core_pid != 0 && core_pid == fg_pid) {
+                                        is_active = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            if !should_minimize {
-                let now = crate::utils::get_now_ms();
-                should_minimize = if let Some(map) = crate::state::FOCUS_TIMESTAMPS.get() {
+            // Fallback: If dock window stole foreground on click, check if this app was active just prior
+            if !is_active && (fg.is_invalid() || fg_pid == my_pid) {
+                if let Some(map) = crate::state::FOCUS_TIMESTAMPS.get() {
                     if let Ok(guard) = map.lock() {
-                        guard
-                            .get(&raw_hwnd)
-                            .map(|ts| now - ts < 2000)
-                            .unwrap_or(false)
-                    } else {
-                        false
+                        let mut newest_hwnd: isize = 0;
+                        let mut newest_ts: i64 = 0;
+                        for (&h, &ts) in guard.iter() {
+                            if ts > newest_ts {
+                                newest_ts = ts;
+                                newest_hwnd = h;
+                            }
+                        }
+                        let now = crate::utils::get_now_ms();
+                        if newest_hwnd != 0 && (now - newest_ts) < 1500 {
+                            let recent_h = HWND(newest_hwnd as *mut _);
+                            let recent_root = GetAncestor(recent_h, GA_ROOTOWNER);
+                            let mut recent_pid = 0u32;
+                            GetWindowThreadProcessId(recent_h, Some(&mut recent_pid));
+                            if recent_h == top_hwnd
+                                || recent_h == in_hwnd
+                                || recent_root == top_hwnd
+                                || (recent_pid != 0 && recent_pid == target_pid)
+                            {
+                                is_active = true;
+                            }
+                        }
                     }
-                } else {
-                    false
-                };
+                }
             }
 
-            if should_minimize {
-                // Clear recent focus timestamp immediately so consecutive checks don't re-trigger minimize
+            if is_active {
+                // CASE 2: Window is currently active -> Minimize it (exact Windows Taskbar behavior)
+                let is_max = IsZoomed(top_hwnd).as_bool() || crate::utils::is_window_fullscreen(top_hwnd);
+                record_maximized_state(raw_top, is_max);
+                record_maximized_state(raw_in, is_max);
+
                 if let Some(map) = crate::state::FOCUS_TIMESTAMPS.get() {
                     if let Ok(mut guard) = map.lock() {
-                        guard.remove(&raw_hwnd);
+                        guard.remove(&raw_top);
+                        guard.remove(&raw_in);
                     }
                 }
 
-                // Remember if this window is currently fullscreen or maximized so we can restore it accurately
-                let is_fullscreen_or_max =
-                    IsZoomed(hwnd).as_bool() || crate::utils::is_window_fullscreen(hwnd);
-                record_maximized_state(raw_hwnd, is_fullscreen_or_max);
-
-                // Asynchronously minimize the window.
-                // Using ShowWindowAsync(SW_MINIMIZE) matches native taskbar behavior and avoids
-                // triggering Windhawk's DefWindowProcW deferred-minimize hook which causes repeating/looping
-                // animations on browsers like Firefox and Zen Browser.
-                let _ = ShowWindowAsync(hwnd, SW_MINIMIZE);
+                let _ = ShowWindowAsync(top_hwnd, SW_MINIMIZE);
             } else {
-                let _ = SetForegroundWindow(hwnd);
+                // CASE 3: Window is currently in background -> Bring to front and activate
+                force_set_foreground_window(top_hwnd);
             }
         }
     })

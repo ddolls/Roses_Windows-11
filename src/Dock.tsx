@@ -468,15 +468,18 @@ const Dock = memo(function Dock() {
 	const handleFocusHwnd = (hwnd: number) => {
 		const key = `hwnd-${hwnd}`;
 		const now = Date.now();
-		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 400) return;
+		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 150) return;
 		lastClickTimeRef.current[key] = now;
 		invoke("focus_window", { hwnd });
 	};
 
 	const handleAppClick = async (app: AppInfo) => {
-		const key = app.hwnd ? `hwnd-${app.hwnd}` : `path-${app.path}`;
+		const targetHwnd =
+			app.hwnd ||
+			(app.all_hwnds && app.all_hwnds.length > 0 ? app.all_hwnds[0][0] : undefined);
+		const key = targetHwnd ? `hwnd-${targetHwnd}` : `path-${app.path}`;
 		const now = Date.now();
-		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 400) {
+		if (lastClickTimeRef.current[key] && now - lastClickTimeRef.current[key] < 150) {
 			return;
 		}
 		lastClickTimeRef.current[key] = now;
@@ -491,8 +494,8 @@ const Dock = memo(function Dock() {
 		try {
 			if (app.path === "start") {
 				await invoke("open_app", { appName: "start" });
-			} else if (app.hwnd) {
-				await invoke("focus_window", { hwnd: app.hwnd });
+			} else if (targetHwnd) {
+				await invoke("focus_window", { hwnd: targetHwnd });
 			} else {
 				await invoke("open_app", { appName: app.path });
 			}
@@ -655,7 +658,10 @@ const Dock = memo(function Dock() {
 			},
 			...pinnedApps.map((p) => {
 				const running = findRunningApp(p);
-				return { ...p, is_running: !!running, hwnd: running?.hwnd, all_hwnds: running?.all_hwnds };
+				const topHwnd =
+					running?.hwnd ||
+					(running?.all_hwnds && running.all_hwnds.length > 0 ? running.all_hwnds[0][0] : undefined);
+				return { ...p, is_running: !!running, hwnd: topHwnd, all_hwnds: running?.all_hwnds };
 			})
 		];
 

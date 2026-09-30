@@ -326,9 +326,19 @@ pub fn setup_window_change_hook(app_handle: AppHandle) {
             0,
             WINEVENT_OUTOFCONTEXT,
         );
+        let _min_hook = SetWinEventHook(
+            windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART,
+            windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZEEND,
+            None,
+            Some(window_change_event_proc),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        );
 
         // Store hooks to prevent them from being dropped
         Box::leak(Box::new(_create_hook));
+        Box::leak(Box::new(_min_hook));
     }
 }
 
@@ -538,6 +548,15 @@ unsafe extern "system" fn thumbnail_capture_proc(
     _ms_event_time: u32,
 ) {
     if hwnd.0.is_null() {
+        return;
+    }
+
+    if event == windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART {
+        use windows::Win32::UI::WindowsAndMessaging::{IsWindow, IsZoomed};
+        if IsWindow(Some(hwnd)).as_bool() {
+            let is_max = IsZoomed(hwnd).as_bool() || crate::utils::is_window_fullscreen(hwnd);
+            crate::commands::record_maximized_state(hwnd.0 as isize, is_max);
+        }
         return;
     }
 
@@ -3002,7 +3021,11 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
         // apps keep a cloaked frame alive, and windows on other virtual desktops
         // are shell-cloaked. Neither belongs in the dock. IsWindowVisible stays
         // true for them, so this needs the DWM check.
-        {
+        // However, minimized windows (IsIconic == true) are often marked with
+        // DWM_CLOAKED_SHELL by DWM (especially UWP apps like Calculator, Settings,
+        // Terminal). They DO belong in the dock so they can be restored/maximized.
+        let is_iconic = windows::Win32::UI::WindowsAndMessaging::IsIconic(hwnd).as_bool();
+        if !is_iconic {
             let mut cloaked = 0u32;
             let size = std::mem::size_of::<u32>() as u32;
             if windows::Win32::Graphics::Dwm::DwmGetWindowAttribute(
