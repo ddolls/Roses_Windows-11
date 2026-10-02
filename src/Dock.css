@@ -825,8 +825,15 @@ body {
 }
 
 /* ==========================================================================
-   Floating Dock Common Base Styles (macOS, Glass, Cyberpunk, Nordic, OLED, Aurora)
+   Floating & Shaped Dock Common Base Styles
    ========================================================================== */
+
+.dock-unpinned-group {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: inherit;
+}
 
 .dock.dock-floating {
 	border-radius: 22px !important;
@@ -840,11 +847,19 @@ body {
 	padding: 6px 14px 10px 14px;
 }
 
-/* Hide default Bloom bottom concave ears for all floating docks */
+/* Hide default Bloom bottom concave ears for all shaped/floating docks */
 .dock.dock-floating::before,
 .dock.dock-floating::after,
 .dock.dock-floating.dock-expanded::before,
-.dock.dock-floating.dock-expanded::after {
+.dock.dock-floating.dock-expanded::after,
+.dock.dock-theme-shelf::before,
+.dock.dock-theme-shelf::after,
+.dock.dock-theme-retro::before,
+.dock.dock-theme-retro::after,
+.dock.dock-theme-cyberpunk::before,
+.dock.dock-theme-cyberpunk::after,
+.dock.dock-theme-islands::before,
+.dock.dock-theme-islands::after {
 	display: none !important;
 	opacity: 0 !important;
 }
@@ -863,7 +878,7 @@ body {
 }
 
 /* ==========================================================================
-   macOS Dock Theme Styles
+   1. macOS Dock Theme (Classic Floating Rounded Pill)
    ========================================================================== */
 
 .dock.dock-theme-macos {
@@ -886,7 +901,6 @@ body {
 	padding: 6px 14px 10px 14px;
 }
 
-/* Light mode overrides for macOS Dock */
 .light-mode .dock.dock-theme-macos {
 	background: rgba(255, 255, 255, 0.54);
 	border: 0.5px solid rgba(255, 255, 255, 0.65);
@@ -896,7 +910,6 @@ body {
 		0 1px 0 rgba(255, 255, 255, 0.9) inset;
 }
 
-/* macOS Icon styling */
 .dock.dock-theme-macos .dock-icon {
 	width: 38px;
 	height: 38px;
@@ -926,7 +939,6 @@ body {
 	filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.35));
 }
 
-/* macOS Running Dot Indicator */
 .dock.dock-theme-macos .active-indicator {
 	position: absolute;
 	bottom: -7px;
@@ -945,7 +957,6 @@ body {
 	box-shadow: 0 0 2px rgba(0, 0, 0, 0.2);
 }
 
-/* macOS Frosted Glass Divider */
 .dock-macos-divider {
 	width: 1px;
 	height: 36px;
@@ -962,7 +973,6 @@ body {
 	box-shadow: 1px 0 0 rgba(255, 255, 255, 0.45);
 }
 
-/* macOS Tooltip */
 .dock-theme-macos-container .tooltip {
 	top: -38px;
 	background: rgba(28, 28, 32, 0.82);
@@ -985,7 +995,6 @@ body {
 	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
 }
 
-/* macOS Click Launch Bounce */
 @keyframes macos-dock-bounce {
 	0%, 100% {
 		transform: translateY(0);
@@ -1009,7 +1018,393 @@ body {
 }
 
 /* ==========================================================================
-   Liquid Glass Theme Styles (VisionOS / Frosted Glass)
+   2. Multi-Island Theme (Segmented Floating Pods - 3 Independent Capsules)
+   ========================================================================== */
+
+.dock.dock-theme-islands {
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
+	gap: 10px !important;
+	padding: 0 0 8px 0 !important;
+	margin-bottom: 4px;
+	overflow: visible !important;
+}
+
+.dock-theme-islands .dock-reorder-container {
+	background: transparent !important;
+	gap: 10px !important;
+	overflow: visible !important;
+}
+
+/* Island 1: Start Button Pod */
+.dock-theme-islands .dock-start-wrapper {
+	background: rgba(28, 30, 40, 0.88);
+	backdrop-filter: blur(35px) saturate(180%);
+	-webkit-backdrop-filter: blur(35px) saturate(180%);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 50px !important;
+	padding: 5px 8px;
+	box-shadow:
+		0 12px 30px rgba(0, 0, 0, 0.5),
+		0 1px 0 rgba(255, 255, 255, 0.25) inset;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.dock-theme-islands .dock-start-wrapper:hover {
+	border-color: rgba(59, 130, 246, 0.6);
+	transform: translateY(-2px);
+}
+
+/* Island 2: Pinned Apps Capsule */
+.dock-theme-islands .dock-reorder-group {
+	background: rgba(28, 30, 40, 0.88);
+	backdrop-filter: blur(35px) saturate(180%);
+	-webkit-backdrop-filter: blur(35px) saturate(180%);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 20px !important;
+	padding: 5px 12px;
+	gap: 8px;
+	box-shadow:
+		0 12px 30px rgba(0, 0, 0, 0.5),
+		0 1px 0 rgba(255, 255, 255, 0.25) inset;
+}
+
+/* Island 3: Running Unpinned Apps Capsule */
+.dock-theme-islands .dock-unpinned-group {
+	background: rgba(28, 30, 40, 0.88);
+	backdrop-filter: blur(35px) saturate(180%);
+	-webkit-backdrop-filter: blur(35px) saturate(180%);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 20px !important;
+	padding: 5px 12px;
+	gap: 8px;
+	box-shadow:
+		0 12px 30px rgba(0, 0, 0, 0.5),
+		0 1px 0 rgba(255, 255, 255, 0.25) inset;
+}
+
+.dock-theme-islands .dock-macos-divider {
+	display: none !important;
+}
+
+.dock-theme-islands .dock-icon {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 0.5px solid rgba(255, 255, 255, 0.12);
+}
+
+.dock-theme-islands .active-indicator {
+	position: absolute;
+	bottom: -5px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 4px;
+	height: 4px;
+	background: #3b82f6;
+	border-radius: 50%;
+	box-shadow: 0 0 6px #3b82f6, 0 0 10px rgba(59, 130, 246, 0.8);
+}
+
+/* ==========================================================================
+   3. Cyberpunk Theme (45° Hex-Chamfered Sci-Fi Armor Plate)
+   ========================================================================== */
+
+.dock.dock-theme-cyberpunk {
+	margin-bottom: 10px !important;
+	border-radius: 0px !important;
+	background: rgba(10, 12, 22, 0.92) !important;
+	backdrop-filter: blur(35px) saturate(190%);
+	-webkit-backdrop-filter: blur(35px) saturate(190%);
+	clip-path: polygon(
+		16px 0%,
+		calc(100% - 16px) 0%,
+		100% 16px,
+		100% calc(100% - 16px),
+		calc(100% - 16px) 100%,
+		16px 100%,
+		0% calc(100% - 16px),
+		0% 16px
+	) !important;
+	padding: 8px 18px 12px 18px !important;
+	gap: 8px !important;
+	box-shadow: 0 0 24px rgba(0, 240, 255, 0.35), 0 12px 40px rgba(0, 0, 0, 0.8) !important;
+	filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.45));
+	border: 1px solid rgba(0, 240, 255, 0.6) !important;
+	overflow: visible !important;
+}
+
+.dock.dock-theme-cyberpunk.dock-impacted {
+	padding: 8px 22px 12px 22px !important;
+}
+
+.dock.dock-theme-cyberpunk .dock-icon {
+	width: 38px;
+	height: 38px;
+	border-radius: 0px !important;
+	clip-path: polygon(
+		6px 0%,
+		calc(100% - 6px) 0%,
+		100% 6px,
+		100% calc(100% - 6px),
+		calc(100% - 6px) 100%,
+		6px 100%,
+		0% calc(100% - 6px),
+		0% 6px
+	) !important;
+	background: linear-gradient(135deg, rgba(0, 240, 255, 0.18) 0%, rgba(255, 0, 128, 0.1) 100%) !important;
+	border: 1px solid rgba(0, 240, 255, 0.4) !important;
+	transition: all 0.2s ease;
+}
+
+.dock.dock-theme-cyberpunk .dock-icon:hover {
+	background: linear-gradient(135deg, rgba(0, 240, 255, 0.35) 0%, rgba(255, 0, 128, 0.25) 100%) !important;
+	filter: drop-shadow(0 0 8px #00f0ff);
+}
+
+.dock.dock-theme-cyberpunk .dock-icon img {
+	width: 28px;
+	height: 28px;
+	filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.5));
+}
+
+.dock.dock-theme-cyberpunk .active-indicator {
+	position: absolute;
+	bottom: -7px;
+	left: 50%;
+	transform: translateX(-50%) skewX(-25deg);
+	width: 14px;
+	height: 3px;
+	background: #00f0ff;
+	border-radius: 0px !important;
+	box-shadow: 0 0 8px #00f0ff, 0 0 16px rgba(255, 0, 128, 0.8);
+	pointer-events: none;
+}
+
+.dock.dock-theme-cyberpunk .dock-macos-divider {
+	background: linear-gradient(180deg, #00f0ff 0%, #ff007f 100%);
+	box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+	width: 1.5px;
+}
+
+.dock-theme-cyberpunk-container .tooltip {
+	top: -38px;
+	background: rgba(10, 12, 22, 0.95);
+	color: #00f0ff;
+	border: 1px solid rgba(0, 240, 255, 0.65);
+	border-radius: 2px;
+	padding: 3px 10px;
+	font-size: 11px;
+	font-family: "Consolas", "Courier New", monospace;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+	text-transform: uppercase;
+}
+
+/* ==========================================================================
+   4. 3D Glass Shelf Theme (Classic Leopard Perspective Trapezoid Shelf)
+   ========================================================================== */
+
+.dock.dock-theme-shelf {
+	margin-bottom: 0px !important;
+	border-radius: 0px !important;
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(200, 220, 245, 0.16) 45%, rgba(255, 255, 255, 0.5) 85%, rgba(255, 255, 255, 0.8) 100%) !important;
+	backdrop-filter: blur(30px) saturate(180%);
+	-webkit-backdrop-filter: blur(30px) saturate(180%);
+	border-top: 1.5px solid rgba(255, 255, 255, 0.8) !important;
+	border-bottom: 4px solid rgba(255, 255, 255, 0.6) !important;
+	border-left: 1px solid rgba(255, 255, 255, 0.35) !important;
+	border-right: 1px solid rgba(255, 255, 255, 0.35) !important;
+	clip-path: polygon(3.5% 0%, 96.5% 0%, 100% 100%, 0% 100%) !important;
+	padding: 10px 26px 8px 26px !important;
+	gap: 10px !important;
+	box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25), 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+	transform-origin: bottom center;
+}
+
+.dock.dock-theme-shelf .dock-icon img {
+	-webkit-box-reflect: below 2px linear-gradient(transparent 55%, rgba(255, 255, 255, 0.35));
+}
+
+.dock.dock-theme-shelf .active-indicator {
+	position: absolute;
+	bottom: -4px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 5px;
+	height: 5px;
+	background: #38bdf8;
+	border-radius: 50%;
+	box-shadow: 0 0 6px #38bdf8, 0 0 12px rgba(56, 189, 248, 0.8);
+}
+
+.dock.dock-theme-shelf .dock-macos-divider {
+	background: rgba(255, 255, 255, 0.35);
+	box-shadow: 1px 0 0 rgba(0, 0, 0, 0.2);
+}
+
+/* ==========================================================================
+   5. Laser Rail Theme (Frameless Glowing Track)
+   ========================================================================== */
+
+.dock.dock-theme-rail {
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
+	padding: 8px 16px 16px 16px !important;
+	margin-bottom: 6px !important;
+	position: relative;
+	gap: 12px !important;
+}
+
+/* Glowing horizontal laser line */
+.dock.dock-theme-rail::before {
+	content: "" !important;
+	position: absolute !important;
+	bottom: 5px !important;
+	left: 8px !important;
+	right: 8px !important;
+	height: 2px !important;
+	background: linear-gradient(90deg, transparent 0%, #00f0ff 25%, #ffffff 50%, #00f0ff 75%, transparent 100%) !important;
+	box-shadow: 0 0 8px #00f0ff, 0 0 18px rgba(0, 240, 255, 0.6) !important;
+	border-radius: 2px !important;
+	display: block !important;
+	opacity: 1 !important;
+	width: auto !important;
+	z-index: 1;
+}
+
+.dock.dock-theme-rail::after {
+	display: none !important;
+}
+
+.dock.dock-theme-rail .dock-icon {
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	border-radius: 0 !important;
+}
+
+.dock.dock-theme-rail .dock-icon img {
+	width: 36px;
+	height: 36px;
+	filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+	transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+}
+
+.dock.dock-theme-rail .dock-icon:hover img {
+	transform: translateY(-4px) scale(1.1);
+	filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.8)) drop-shadow(0 6px 14px rgba(0, 0, 0, 0.6));
+}
+
+.dock.dock-theme-rail .active-indicator {
+	position: absolute;
+	bottom: 2px;
+	left: 50%;
+	transform: translateX(-50%) rotate(45deg);
+	width: 6px;
+	height: 6px;
+	background: #ffffff;
+	box-shadow: 0 0 6px #00f0ff, 0 0 14px #00f0ff;
+	border-radius: 1px;
+	z-index: 2;
+}
+
+.dock.dock-theme-rail .dock-macos-divider {
+	background: linear-gradient(180deg, transparent 0%, #00f0ff 50%, transparent 100%);
+	box-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
+	height: 28px;
+}
+
+/* ==========================================================================
+   6. Retro 90s Theme (Sharp 90° Beveled 3D Box)
+   ========================================================================== */
+
+.dock.dock-theme-retro {
+	margin-bottom: 0px !important;
+	border-radius: 0px !important;
+	background: #c0c4c8 !important;
+	border-top: 2px solid #ffffff !important;
+	border-left: 2px solid #ffffff !important;
+	border-right: 2px solid #3c3c3c !important;
+	border-bottom: 2px solid #3c3c3c !important;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+	padding: 4px 6px 6px 6px !important;
+	gap: 4px !important;
+}
+
+.dock.dock-theme-retro .dock-icon {
+	width: 36px;
+	height: 36px;
+	border-radius: 0px !important;
+	background: #c0c4c8 !important;
+	border-top: 2px solid #ffffff !important;
+	border-left: 2px solid #ffffff !important;
+	border-right: 2px solid #404040 !important;
+	border-bottom: 2px solid #404040 !important;
+	box-shadow: none !important;
+	transition: all 0.1s ease;
+}
+
+.dock.dock-theme-retro .dock-icon:active {
+	border-top: 2px solid #404040 !important;
+	border-left: 2px solid #404040 !important;
+	border-right: 2px solid #ffffff !important;
+	border-bottom: 2px solid #ffffff !important;
+	background: #b0b4b8 !important;
+}
+
+.dock.dock-theme-retro .dock-icon img {
+	width: 26px;
+	height: 26px;
+	filter: none !important;
+	image-rendering: pixelated;
+}
+
+.dock.dock-theme-retro .active-indicator {
+	position: absolute;
+	bottom: -4px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 16px;
+	height: 2px;
+	background: #000080;
+	border-radius: 0px !important;
+	box-shadow: none !important;
+}
+
+.dock.dock-theme-retro .dock-macos-divider {
+	width: 2px;
+	height: 30px;
+	background: #808080;
+	border-right: 1px solid #ffffff;
+	margin: 0 2px;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.dock-theme-retro-container .tooltip {
+	border-radius: 0px !important;
+	background: #ffffe1 !important;
+	color: #000000 !important;
+	border: 1px solid #000000 !important;
+	font-family: "Tahoma", "Segoe UI", sans-serif !important;
+	font-size: 11px !important;
+	box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* ==========================================================================
+   7. Liquid Glass Theme (VisionOS / Frosted Glass Capsule)
    ========================================================================== */
 
 .dock.dock-theme-glass {
@@ -1101,370 +1496,4 @@ body {
 	font-size: 11.5px;
 	font-weight: 500;
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-}
-
-/* ==========================================================================
-   Cyberpunk Neon Theme Styles
-   ========================================================================== */
-
-.dock.dock-theme-cyberpunk {
-	background: rgba(10, 12, 22, 0.85);
-	backdrop-filter: blur(35px) saturate(190%);
-	-webkit-backdrop-filter: blur(35px) saturate(190%);
-	border: 1px solid rgba(0, 240, 255, 0.48);
-	border-radius: 20px !important;
-	margin-bottom: 8px;
-	padding: 6px 10px 10px 10px;
-	gap: 6px;
-	box-shadow:
-		0 0 20px rgba(0, 240, 255, 0.28),
-		0 12px 40px rgba(0, 0, 0, 0.75),
-		0 0 0 1px rgba(255, 0, 128, 0.2) inset,
-		0 1px 0 rgba(0, 240, 255, 0.5) inset;
-	overflow: visible !important;
-}
-
-.dock.dock-theme-cyberpunk.dock-impacted {
-	padding: 6px 14px 10px 14px;
-}
-
-.dock.dock-theme-cyberpunk .dock-icon {
-	width: 38px;
-	height: 38px;
-	border-radius: 8px;
-	background: linear-gradient(135deg, rgba(0, 240, 255, 0.16) 0%, rgba(255, 0, 128, 0.08) 100%);
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-	border: 0.5px solid rgba(0, 240, 255, 0.3);
-	transition: all 0.2s ease;
-}
-
-.dock.dock-theme-cyberpunk .dock-icon:hover {
-	border-color: rgba(0, 240, 255, 0.85);
-	box-shadow: 0 0 14px rgba(0, 240, 255, 0.55);
-}
-
-.dock.dock-theme-cyberpunk .dock-icon img {
-	width: 30px;
-	height: 30px;
-	filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.35));
-}
-
-.dock.dock-theme-cyberpunk.dock-icon-only .dock-icon {
-	background: transparent;
-	border: none;
-	box-shadow: none;
-	border-radius: 0;
-}
-
-.dock.dock-theme-cyberpunk.dock-icon-only .dock-icon img {
-	width: 36px;
-	height: 36px;
-	filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.45));
-}
-
-.dock.dock-theme-cyberpunk .active-indicator {
-	position: absolute;
-	bottom: -7px;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 10px;
-	height: 3px;
-	background: #00f0ff;
-	border-radius: 2px;
-	box-shadow: 0 0 6px #00f0ff, 0 0 12px #00f0ff, 0 0 18px rgba(255, 0, 128, 0.9);
-	pointer-events: none;
-}
-
-.dock.dock-theme-cyberpunk .dock-macos-divider {
-	background: linear-gradient(180deg, #00f0ff 0%, #ff007f 100%);
-	box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
-	width: 1.5px;
-}
-
-.dock-theme-cyberpunk-container .tooltip {
-	top: -38px;
-	background: rgba(10, 12, 22, 0.95);
-	color: #00f0ff;
-	border: 1px solid rgba(0, 240, 255, 0.65);
-	border-radius: 4px;
-	padding: 3px 10px;
-	font-size: 11px;
-	font-family: "Consolas", "Courier New", monospace;
-	font-weight: 600;
-	letter-spacing: 0.05em;
-	box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
-	text-transform: uppercase;
-}
-
-/* ==========================================================================
-   Nordic Frost Theme Styles (Nord Palette)
-   ========================================================================== */
-
-.dock.dock-theme-nordic {
-	background: rgba(46, 52, 64, 0.78);
-	backdrop-filter: blur(36px) saturate(135%);
-	-webkit-backdrop-filter: blur(36px) saturate(135%);
-	border: 0.5px solid rgba(136, 192, 208, 0.32);
-	border-radius: 22px !important;
-	margin-bottom: 8px;
-	padding: 6px 10px 10px 10px;
-	gap: 6px;
-	box-shadow:
-		0 18px 45px rgba(20, 25, 34, 0.5),
-		0 0 0 0.5px rgba(136, 192, 208, 0.12) inset,
-		0 1px 0 rgba(236, 239, 244, 0.22) inset;
-	overflow: visible !important;
-}
-
-.dock.dock-theme-nordic.dock-impacted {
-	padding: 6px 14px 10px 14px;
-}
-
-.light-mode .dock.dock-theme-nordic {
-	background: rgba(236, 239, 244, 0.75);
-	border: 0.5px solid rgba(136, 192, 208, 0.55);
-	box-shadow:
-		0 14px 32px rgba(76, 86, 106, 0.15),
-		0 1px 0 rgba(255, 255, 255, 0.9) inset;
-}
-
-.dock.dock-theme-nordic .dock-icon {
-	width: 38px;
-	height: 38px;
-	border-radius: 10px;
-	background: rgba(59, 66, 82, 0.65);
-	border: 0.5px solid rgba(129, 161, 193, 0.24);
-	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-	transition: all 0.2s ease;
-}
-
-.light-mode .dock.dock-theme-nordic .dock-icon {
-	background: rgba(229, 233, 240, 0.85);
-	border-color: rgba(136, 192, 208, 0.4);
-}
-
-.dock.dock-theme-nordic .dock-icon img {
-	width: 30px;
-	height: 30px;
-	filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.25));
-}
-
-.dock.dock-theme-nordic.dock-icon-only .dock-icon {
-	background: transparent;
-	border: none;
-	box-shadow: none;
-	border-radius: 0;
-}
-
-.dock.dock-theme-nordic.dock-icon-only .dock-icon img {
-	width: 36px;
-	height: 36px;
-	filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.35));
-}
-
-.dock.dock-theme-nordic .active-indicator {
-	position: absolute;
-	bottom: -7px;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 4px;
-	height: 4px;
-	background: #88c0d0;
-	border-radius: 50%;
-	box-shadow: 0 0 6px #88c0d0, 0 0 10px rgba(129, 161, 193, 0.6);
-	pointer-events: none;
-}
-
-.dock.dock-theme-nordic .dock-macos-divider {
-	background: rgba(136, 192, 208, 0.35);
-	box-shadow: 1px 0 0 rgba(0, 0, 0, 0.1);
-}
-
-.dock-theme-nordic-container .tooltip {
-	top: -38px;
-	background: rgba(46, 52, 64, 0.92);
-	color: #eceff4;
-	border: 0.5px solid rgba(136, 192, 208, 0.35);
-	border-radius: 6px;
-	padding: 3px 10px;
-	font-size: 11.5px;
-	font-weight: 500;
-	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-}
-
-/* ==========================================================================
-   OLED Deep Black Theme Styles
-   ========================================================================== */
-
-.dock.dock-theme-oled {
-	background: rgba(0, 0, 0, 0.94);
-	backdrop-filter: blur(40px) contrast(1.15);
-	-webkit-backdrop-filter: blur(40px) contrast(1.15);
-	border: 1px solid rgba(255, 255, 255, 0.18);
-	border-radius: 22px !important;
-	margin-bottom: 8px;
-	padding: 6px 10px 10px 10px;
-	gap: 6px;
-	box-shadow:
-		0 24px 60px rgba(0, 0, 0, 0.92),
-		0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-		0 1px 0 rgba(255, 255, 255, 0.35) inset;
-	overflow: visible !important;
-}
-
-.dock.dock-theme-oled.dock-impacted {
-	padding: 6px 14px 10px 14px;
-}
-
-.dock.dock-theme-oled .dock-icon {
-	width: 38px;
-	height: 38px;
-	border-radius: 10px;
-	background: rgba(22, 22, 22, 0.85);
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
-	transition: all 0.2s ease;
-}
-
-.dock.dock-theme-oled .dock-icon:hover {
-	border-color: rgba(255, 42, 95, 0.6);
-	box-shadow: 0 0 12px rgba(255, 42, 95, 0.35);
-}
-
-.dock.dock-theme-oled .dock-icon img {
-	width: 30px;
-	height: 30px;
-	filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.6));
-}
-
-.dock.dock-theme-oled.dock-icon-only .dock-icon {
-	background: transparent;
-	border: none;
-	box-shadow: none;
-	border-radius: 0;
-}
-
-.dock.dock-theme-oled.dock-icon-only .dock-icon img {
-	width: 36px;
-	height: 36px;
-	filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.8));
-}
-
-.dock.dock-theme-oled .active-indicator {
-	position: absolute;
-	bottom: -7px;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 5px;
-	height: 5px;
-	background: #ff2a5f;
-	border-radius: 50%;
-	box-shadow: 0 0 6px #ff2a5f, 0 0 12px rgba(255, 42, 95, 0.75);
-	pointer-events: none;
-}
-
-.dock.dock-theme-oled .dock-macos-divider {
-	background: rgba(255, 255, 255, 0.2);
-	box-shadow: 1px 0 0 rgba(0, 0, 0, 0.5);
-}
-
-.dock-theme-oled-container .tooltip {
-	top: -38px;
-	background: #000000;
-	color: #ffffff;
-	border: 1px solid rgba(255, 255, 255, 0.25);
-	border-radius: 6px;
-	padding: 3px 10px;
-	font-size: 11.5px;
-	font-weight: 600;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
-}
-
-/* ==========================================================================
-   Aurora Borealis Theme Styles
-   ========================================================================== */
-
-.dock.dock-theme-aurora {
-	background: rgba(16, 20, 30, 0.75);
-	backdrop-filter: blur(40px) saturate(200%);
-	-webkit-backdrop-filter: blur(40px) saturate(200%);
-	border: 1px solid rgba(52, 211, 153, 0.38);
-	border-radius: 22px !important;
-	margin-bottom: 8px;
-	padding: 6px 10px 10px 10px;
-	gap: 6px;
-	box-shadow:
-		0 18px 45px rgba(0, 0, 0, 0.65),
-		0 0 24px rgba(52, 211, 153, 0.22),
-		0 0 45px rgba(168, 85, 247, 0.16),
-		0 1px 0 rgba(167, 243, 208, 0.35) inset;
-	overflow: visible !important;
-}
-
-.dock.dock-theme-aurora.dock-impacted {
-	padding: 6px 14px 10px 14px;
-}
-
-.dock.dock-theme-aurora .dock-icon {
-	width: 38px;
-	height: 38px;
-	border-radius: 10px;
-	background: linear-gradient(135deg, rgba(52, 211, 153, 0.14) 0%, rgba(168, 85, 247, 0.1) 100%);
-	border: 0.5px solid rgba(52, 211, 153, 0.28);
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-	transition: all 0.2s ease;
-}
-
-.dock.dock-theme-aurora .dock-icon:hover {
-	border-color: rgba(52, 211, 153, 0.75);
-	box-shadow: 0 0 12px rgba(52, 211, 153, 0.45);
-}
-
-.dock.dock-theme-aurora .dock-icon img {
-	width: 30px;
-	height: 30px;
-	filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-
-.dock.dock-theme-aurora.dock-icon-only .dock-icon {
-	background: transparent;
-	border: none;
-	box-shadow: none;
-	border-radius: 0;
-}
-
-.dock.dock-theme-aurora.dock-icon-only .dock-icon img {
-	width: 36px;
-	height: 36px;
-	filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
-}
-
-.dock.dock-theme-aurora .active-indicator {
-	position: absolute;
-	bottom: -7px;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 5px;
-	height: 5px;
-	background: #34d399;
-	border-radius: 50%;
-	box-shadow: 0 0 6px #34d399, 0 0 12px rgba(52, 211, 153, 0.75), 0 0 18px rgba(168, 85, 247, 0.5);
-	pointer-events: none;
-}
-
-.dock.dock-theme-aurora .dock-macos-divider {
-	background: linear-gradient(180deg, rgba(52, 211, 153, 0.6) 0%, rgba(168, 85, 247, 0.6) 100%);
-	box-shadow: 0 0 6px rgba(52, 211, 153, 0.3);
-}
-
-.dock-theme-aurora-container .tooltip {
-	top: -38px;
-	background: rgba(16, 20, 30, 0.92);
-	color: #a7f3d0;
-	border: 0.5px solid rgba(52, 211, 153, 0.4);
-	border-radius: 6px;
-	padding: 3px 10px;
-	font-size: 11.5px;
-	font-weight: 500;
-	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 12px rgba(52, 211, 153, 0.25);
 }

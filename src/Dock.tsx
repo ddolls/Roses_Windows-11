@@ -72,7 +72,7 @@ const Dock = memo(function Dock() {
 	const [dockTheme, setDockTheme] = useState(() => {
 		return localStorage.getItem("bloom-dock-theme") || "default";
 	});
-	const isFloatingTheme = dockTheme !== "default";
+	const isFloatingTheme = dockTheme !== "default" && dockTheme !== "shelf";
 	const isMacTheme = dockTheme === "macos" || dockTheme === "mac os";
 	const [bouncingApp, setBouncingApp] = useState<string | null>(null);
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(
@@ -153,7 +153,7 @@ const Dock = memo(function Dock() {
 	// standard maximized window is in the foreground, so the reserved strip no
 	// longer looks like a cut-out around the centered pill.
 	const isAdaptive =
-		!isFloatingTheme && dockAdaptive && dockMode === "fixed" && isMaximized && isExpanded && !isHidden && isVisible;
+		!isFloatingTheme && dockTheme !== "shelf" && dockAdaptive && dockMode === "fixed" && isMaximized && isExpanded && !isHidden && isVisible;
 	// Nearly full width — 24px margin per side at the visual (scaled) size.
 	// Pre-transform: visual = width * scale, so width = (viewport - 48*scale) / scale.
 	const adaptiveWidth = (viewportWidth - 48 * scale) / scale;
@@ -908,10 +908,10 @@ const Dock = memo(function Dock() {
 						opacity: 1,
 						width: 34,
 						height: 34,
-						borderTopLeftRadius: isFloatingTheme && isExpanded ? 22 : 17,
-						borderTopRightRadius: isFloatingTheme && isExpanded ? 22 : 17,
-						borderBottomLeftRadius: isFloatingTheme && isExpanded ? 22 : 17,
-						borderBottomRightRadius: isFloatingTheme && isExpanded ? 22 : 17
+						borderTopLeftRadius: dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf" ? 0 : isFloatingTheme && isExpanded ? 22 : 17,
+						borderTopRightRadius: dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf" ? 0 : isFloatingTheme && isExpanded ? 22 : 17,
+						borderBottomLeftRadius: dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf" ? 0 : isFloatingTheme && isExpanded ? 22 : 17,
+						borderBottomRightRadius: dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf" ? 0 : isFloatingTheme && isExpanded ? 22 : 17
 					}}
 					animate={{
 						y: !isReady ? -800 : isVisible ? (isHidden ? 100 : 0) : 150,
@@ -919,29 +919,37 @@ const Dock = memo(function Dock() {
 							isExpanded && !isHidden && isVisible ? (isAdaptive ? adaptiveWidth : "auto") : 34,
 						height: isExpanded && !isHidden && isVisible ? "auto" : 34,
 						borderTopLeftRadius:
-							isFloatingTheme && isExpanded
-								? 22
-								: (isImpacted || isExpanded) && !isHidden && isVisible
-									? 18
-									: 17,
+							dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf"
+								? 0
+								: isFloatingTheme && isExpanded
+									? 22
+									: (isImpacted || isExpanded) && !isHidden && isVisible
+										? 18
+										: 17,
 						borderTopRightRadius:
-							isFloatingTheme && isExpanded
-								? 22
-								: (isImpacted || isExpanded) && !isHidden && isVisible
-									? 18
-									: 17,
+							dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf"
+								? 0
+								: isFloatingTheme && isExpanded
+									? 22
+									: (isImpacted || isExpanded) && !isHidden && isVisible
+										? 18
+										: 17,
 						borderBottomLeftRadius:
-							isFloatingTheme && isExpanded
-								? 22
-								: (isImpacted || isExpanded) && !isHidden && isVisible
-									? 0
-									: 17,
+							dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf"
+								? 0
+								: isFloatingTheme && isExpanded
+									? 22
+									: (isImpacted || isExpanded) && !isHidden && isVisible
+										? 0
+										: 17,
 						borderBottomRightRadius:
-							isFloatingTheme && isExpanded
-								? 22
-								: (isImpacted || isExpanded) && !isHidden && isVisible
-									? 0
-									: 17,
+							dockTheme === "retro" || dockTheme === "cyberpunk" || dockTheme === "shelf"
+								? 0
+								: isFloatingTheme && isExpanded
+									? 22
+									: (isImpacted || isExpanded) && !isHidden && isVisible
+										? 0
+										: 17,
 						opacity: isVisible ? 1 : 0,
 						scale: scale
 					}}
@@ -978,7 +986,7 @@ const Dock = memo(function Dock() {
 											opacity: { duration: 0.15, delay: 0.15 },
 											scale: { type: "spring", stiffness: 400, damping: 25, delay: 0.15 }
 										}}
-										className="dock-icon-wrapper"
+										className="dock-icon-wrapper dock-start-wrapper"
 										onContextMenu={(e) => handleContextMenu(e, startItem)}
 										onMouseEnter={() => setHoveredApp(itemKey(startItem))}
 										onMouseLeave={() => {
@@ -1201,11 +1209,13 @@ const Dock = memo(function Dock() {
 									))}
 								</Reorder.Group>
 
-								{isFloatingTheme && unpinnedItems.length > 0 && (
+								{isFloatingTheme && dockTheme !== "islands" && unpinnedItems.length > 0 && (
 									<div className="dock-macos-divider" />
 								)}
 
-								{unpinnedItems.map((app) => (
+								{unpinnedItems.length > 0 && (
+									<div className="dock-unpinned-group">
+										{unpinnedItems.map((app) => (
 									<motion.div
 										key={app.path}
 										layout
@@ -1341,6 +1351,8 @@ const Dock = memo(function Dock() {
 										{app.is_running && <div className="active-indicator" />}
 									</motion.div>
 								))}
+									</div>
+								)}
 							</motion.div>
 						)}
 					</AnimatePresence>

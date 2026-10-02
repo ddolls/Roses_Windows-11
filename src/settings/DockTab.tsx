@@ -57,13 +57,14 @@ export function DockTab({
 								value={dockTheme}
 								onChange={(e) => setDockThemeValue(e.target.value)}
 							>
-								<option value="default">Default</option>
-								<option value="macos">macOS</option>
-								<option value="glass">Liquid Glass</option>
-								<option value="cyberpunk">Cyberpunk Neon</option>
-								<option value="nordic">Nordic Frost</option>
-								<option value="oled">OLED Deep Black</option>
-								<option value="aurora">Aurora Borealis</option>
+								<option value="default">Default (Attached Concave Taskbar)</option>
+								<option value="macos">macOS (Floating Rounded Pill)</option>
+								<option value="islands">Multi-Island (Segmented Floating Pods)</option>
+								<option value="cyberpunk">Cyberpunk (45° Hex-Chamfered Sci-Fi)</option>
+								<option value="shelf">3D Glass Shelf (Perspective Leopard Rack)</option>
+								<option value="rail">Laser Rail (Frameless Glowing Track)</option>
+								<option value="retro">Retro 90s (Sharp 3D Beveled Box)</option>
+								<option value="glass">Liquid Glass (Frosted Vision Capsule)</option>
 							</select>
 						</SettingRow>
 
